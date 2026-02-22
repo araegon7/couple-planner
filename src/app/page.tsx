@@ -286,13 +286,15 @@ export default function CouplePlanner() {
     const idea = ideas.find(i => i.id === id);
     console.log('Found idea:', idea);
     if (idea) {
-      const updated: Idea = { 
+      // Create update object without undefined values
+      const updated: any = { 
         ...idea, 
         scheduledAt: null, 
-        isScheduled: false, 
-        startTime: undefined, 
-        endTime: undefined 
+        isScheduled: false
       };
+      // Remove fields instead of setting to undefined
+      delete updated.startTime;
+      delete updated.endTime;
       console.log('Saving updated idea:', updated);
       await saveIdea(updated);
       console.log('Saved successfully');
