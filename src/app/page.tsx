@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DndContext, DragEndEvent, useDraggable, useDroppable, DragOverlay } from '@dnd-kit/core';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfYear, endOfYear, eachMonthOfInterval, getYear, setYear, setMonth } from 'date-fns';
-import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload, Heart, Sparkles, Moon, Sun, ChevronLeft, ChevronRight, Trash2, Settings } from 'lucide-react';
+import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload, Sparkles, Moon, Sun, ChevronLeft, ChevronRight, Trash2, Settings, Download, Users, Gamepad2, Volleyball, ShoppingBag, Drama, Dumbbell, BookOpen, Wine, TreePine, Landmark } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme } from './providers';
+import { useTheme, EMOJIS } from './providers';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 interface Idea {
   id: string;
@@ -18,6 +20,9 @@ interface Idea {
   scheduledAt: Date | null;
   isScheduled: boolean;
   color: string;
+  author: 'AY' | 'AK';
+  startTime?: string;
+  endTime?: string;
 }
 
 interface MonthlyBudget {
@@ -27,22 +32,40 @@ interface MonthlyBudget {
 }
 
 const INITIAL_IDEAS: Idea[] = [
-  { id: '1', title: '🌅 Desert Safari', description: 'Dune bashing and dinner under the stars', duration: '6 hours', category: 'adventure', budget: 300, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'orange' },
-  { id: '2', title: '🏙️ Burj Khalifa', description: 'Sunset at the top together', duration: '3 hours', category: 'sightseeing', budget: 150, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'blue' },
-  { id: '3', title: '🏖️ Beach Day', description: 'JBR Beach relaxation & swimming', duration: 'full day', category: 'chill', budget: 50, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'cyan' },
+  { id: '1', title: '🌅 Desert Safari', description: 'Dune bashing and dinner under the stars', duration: '6 hours', category: 'adventure', budget: 300, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'orange', author: 'AY' },
+  { id: '2', title: '🏙️ Burj Khalifa', description: 'Sunset at the top together', duration: '3 hours', category: 'sightseeing', budget: 150, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'blue', author: 'AK' },
+  { id: '3', title: '🏖️ Beach Day', description: 'JBR Beach relaxation & swimming', duration: 'full day', category: 'chill', budget: 50, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'cyan', author: 'AY' },
 ];
 
-const CATEGORIES = ['all', 'food', 'adventure', 'chill', 'sightseeing', 'romantic'];
+const CATEGORIES = [
+  { id: 'all', emoji: '✨', icon: Sparkles, label: 'all' },
+  { id: 'food', emoji: '🍽️', icon: null, label: 'food' },
+  { id: 'adventure', emoji: '🎢', icon: null, label: 'adventure' },
+  { id: 'chill', emoji: '😌', icon: null, label: 'chill' },
+  { id: 'sightseeing', emoji: '📸', icon: null, label: 'sightseeing' },
+  { id: 'romantic', emoji: '💕', icon: null, label: 'romantic' },
+  { id: 'gaming', emoji: '🎮', icon: Gamepad2, label: 'gaming' },
+  { id: 'sports', emoji: '🏐', icon: Volleyball, label: 'sports' },
+  { id: 'shopping', emoji: '🛍️', icon: ShoppingBag, label: 'shopping' },
+  { id: 'entertainment', emoji: '🎭', icon: Drama, label: 'entertainment' },
+  { id: 'fitness', emoji: '🏋️', icon: Dumbbell, label: 'fitness' },
+  { id: 'learning', emoji: '📚', icon: BookOpen, label: 'learning' },
+  { id: 'nightlife', emoji: '🍷', icon: Wine, label: 'nightlife' },
+  { id: 'nature', emoji: '🌳', icon: TreePine, label: 'nature' },
+  { id: 'culture', emoji: '🏛️', icon: Landmark, label: 'culture' },
+];
+
 const COLORS = ['rose', 'pink', 'purple', 'blue', 'cyan', 'teal', 'emerald', 'amber', 'orange', 'red'];
-
-const CATEGORY_EMOJIS: { [key: string]: string } = {
-  all: '✨', food: '🍽️', adventure: '🎢', chill: '😌', sightseeing: '📸', romantic: '💕'
-};
-
+const AUTHOR_COLORS = { AY: 'bg-pink-500', AK: 'bg-purple-500' };
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
+  const hour = Math.floor(i / 2);
+  const minute = (i % 2) * 30;
+  return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+});
 
 export default function CouplePlanner() {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, author, toggleAuthor } = useTheme();
   const [ideas, setIdeas] = useState<Idea[]>(INITIAL_IDEAS);
   const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 1));
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -50,6 +73,7 @@ export default function CouplePlanner() {
   const [showRandomModal, setShowRandomModal] = useState(false);
   const [showDayModal, setShowDayModal] = useState<Date | null>(null);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [randomPick, setRandomPick] = useState<Idea | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudget[]>([]);
@@ -58,6 +82,12 @@ export default function CouplePlanner() {
   });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [tempBudget, setTempBudget] = useState('');
+  const [randomEmoji, setRandomEmoji] = useState('✨');
+  const calendarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setRandomEmoji(EMOJIS[Math.floor(Math.random() * EMOJIS.length)]);
+  }, []);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -82,14 +112,9 @@ export default function CouplePlanner() {
   );
 
   const spentThisMonth = scheduledThisMonth.reduce((sum, i) => sum + (i.budget || 0), 0);
-  const remainingBudget = (currentMonthBudget?.budget || 0) - spentThisMonth;
+  const totalBudget = currentMonthBudget?.budget || 0;
+  const remainingBudget = totalBudget - spentThisMonth;
   const isOverBudget = remainingBudget < 0;
-
-  useEffect(() => {
-    if (!currentMonthBudget && !showBudgetModal) {
-      setShowBudgetModal(true);
-    }
-  }, [currentDate, currentMonthBudget]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -100,9 +125,29 @@ export default function CouplePlanner() {
       const date = days[dayIndex];
       setIdeas(ideas.map(idea => 
         idea.id === active.id 
-          ? { ...idea, scheduledAt: date, isScheduled: true }
+          ? { ...idea, scheduledAt: date, isScheduled: true, author }
           : idea
       ));
+    } else if (over && over.id.toString().startsWith('time-')) {
+      const timeIndex = parseInt(over.id.toString().replace('time-', ''));
+      const time = TIME_SLOTS[timeIndex];
+      const [hours, minutes] = time.split(':').map(Number);
+      const endHours = (hours + 2) % 24;
+      const endTime = `${endHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      
+      setIdeas(ideas.map(idea => {
+        if (idea.id === active.id) {
+          return { 
+            ...idea, 
+            scheduledAt: showDayModal, 
+            isScheduled: true, 
+            author,
+            startTime: time,
+            endTime
+          };
+        }
+        return idea;
+      }));
     }
   };
 
@@ -128,6 +173,7 @@ export default function CouplePlanner() {
       scheduledAt: null,
       isScheduled: false,
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      author,
     };
     setIdeas([...ideas, idea]);
     setNewIdea({ title: '', description: '', duration: '', category: 'adventure', budget: '' });
@@ -141,7 +187,7 @@ export default function CouplePlanner() {
 
   const unscheduleIdea = (id: string) => {
     setIdeas(ideas.map(idea => 
-      idea.id === id ? { ...idea, scheduledAt: null, isScheduled: false } : idea
+      idea.id === id ? { ...idea, scheduledAt: null, isScheduled: false, startTime: undefined, endTime: undefined } : idea
     ));
   };
 
@@ -177,6 +223,39 @@ export default function CouplePlanner() {
     setCurrentDate(setMonth(currentDate, monthIndex));
   };
 
+  const exportCalendar = async (type: 'month' | 'day') => {
+    if (!calendarRef.current) return;
+    
+    const canvas = await html2canvas(calendarRef.current);
+    const imgData = canvas.toDataURL('image/png');
+    
+    if (type === 'month') {
+      const pdf = new jsPDF();
+      const imgWidth = 210;
+      const pageHeight = 295;
+      const imgHeight = canvas.height * imgWidth / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      pdf.save(`A-A-Adventure-${format(currentDate, 'MMMM-yyyy')}.pdf`);
+    } else if (showDayModal) {
+      const pdf = new jsPDF();
+      pdf.addImage(imgData, 'PNG', 0, 0, 210, 150);
+      pdf.save(`A-A-Adventure-${format(showDayModal, 'MMMM-do-yyyy')}.pdf`);
+    }
+    
+    setShowExportModal(false);
+  };
+
   const activeIdea = ideas.find(i => i.id === activeDragId);
 
   return (
@@ -184,14 +263,24 @@ export default function CouplePlanner() {
       <div className="max-w-[1400px] mx-auto">
         {/* Header */}
         <header className="mb-6 text-center relative">
-          <motion.button
-            whileHover={{ scale: 1.1, rotate: 15 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={toggleTheme}
-            className="absolute right-0 top-0 p-3 rounded-full bg-card-bg border-2 border-border-custom shadow-lg"
-          >
-            {theme === 'dark' ? <Sun className="w-6 h-6 text-yellow-400" /> : <Moon className="w-6 h-6 text-purple-600" />}
-          </motion.button>
+          <div className="absolute right-0 top-0 flex gap-2">
+            <motion.button
+              whileHover={{ scale: 1.1, rotate: 15 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={toggleTheme}
+              className="p-3 rounded-full bg-card-bg border-2 border-border-custom shadow-lg"
+            >
+              {theme === 'dark' ? <Sun className="w-6 h-6 text-yellow-400" /> : <Moon className="w-6 h-6 text-purple-600" />}
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setShowExportModal(true)}
+              className="p-3 rounded-full bg-card-bg border-2 border-border-custom shadow-lg"
+            >
+              <Download className="w-6 h-6 text-pink-500" />
+            </motion.button>
+          </div>
 
           <motion.div 
             initial={{ y: -20, opacity: 0 }}
@@ -208,7 +297,7 @@ export default function CouplePlanner() {
             animate={{ scale: 1, opacity: 1 }}
             className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 bg-clip-text text-transparent mb-2"
           >
-            A + A Adventure 💕
+            A + A Adventure {randomEmoji}
           </motion.h1>
           
           <motion.p 
@@ -219,27 +308,47 @@ export default function CouplePlanner() {
             {format(currentDate, 'MMMM yyyy')}
           </motion.p>
           
-          {/* Budget Card */}
-          <motion.div 
-            whileHover={{ scale: 1.02 }}
-            className="inline-flex items-center gap-3 bg-card-bg backdrop-blur-md px-6 py-3 rounded-2xl shadow-xl border-2 border-border-custom cursor-pointer"
-            onClick={() => setShowBudgetModal(true)}
-          >
-            <div className="bg-pink-100 dark:bg-pink-900 p-2 rounded-full">
-              <DollarSign className="w-5 h-5 text-pink-600 dark:text-pink-300" />
-            </div>
-            <div className="text-left">
-              <span className="text-secondary text-xs font-medium">Monthly Budget</span>
-              <div className="flex items-baseline gap-2">
-                <span className={`text-2xl font-bold ${isOverBudget ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
-                  ${Math.abs(remainingBudget)}
-                </span>
-                <span className="text-secondary text-sm">/ ${currentMonthBudget?.budget || 0}</span>
-                {isOverBudget && <span className="text-red-500 text-sm font-bold">OVER BUDGET!</span>}
+          {/* Budget & Author Toggle */}
+          <div className="flex justify-center gap-4 flex-wrap">
+            <motion.div 
+              whileHover={{ scale: 1.02 }}
+              className="inline-flex items-center gap-3 bg-card-bg backdrop-blur-md px-6 py-3 rounded-2xl shadow-xl border-2 border-border-custom cursor-pointer"
+              onClick={() => setShowBudgetModal(true)}
+            >
+              <div className="bg-pink-100 dark:bg-pink-900 p-2 rounded-full">
+                <DollarSign className="w-5 h-5 text-pink-600 dark:text-pink-300" />
               </div>
-            </div>
-            <Settings className="w-4 h-4 text-secondary ml-2" />
-          </motion.div>
+              <div className="text-left">
+                <span className="text-secondary text-xs font-medium">Monthly Budget</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-primary">
+                    ${totalBudget}
+                  </span>
+                  <span className="text-secondary text-sm">/</span>
+                  <span className={`text-2xl font-bold ${isOverBudget ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
+                    {isOverBudget ? <span className="flex items-center gap-1">🔻 ${Math.abs(remainingBudget)}</span> : `$${remainingBudget}`}
+                  </span>
+                </div>
+              </div>
+              <Settings className="w-4 h-4 text-secondary" />
+            </motion.div>
+
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={toggleAuthor}
+              className="inline-flex items-center gap-3 bg-card-bg backdrop-blur-md px-6 py-3 rounded-2xl shadow-xl border-2 border-border-custom"
+            >
+              <Users className="w-5 h-5 text-purple-500" />
+              <div className="text-left">
+                <span className="text-secondary text-xs font-medium">Planning as</span>
+                <div className="flex items-center gap-2">
+                  <span className={`w-3 h-3 rounded-full ${AUTHOR_COLORS[author]}`} />
+                  <span className="font-bold text-primary">{author}</span>
+                </div>
+              </div>
+            </motion.button>
+          </div>
         </header>
 
         <DndContext 
@@ -279,25 +388,25 @@ export default function CouplePlanner() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-1.5 mb-4 max-h-[120px] overflow-y-auto">
                 {CATEGORIES.map(cat => (
                   <motion.button
-                    key={cat}
+                    key={cat.id}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                      selectedCategory === cat 
+                    onClick={() => setSelectedCategory(cat.id)}
+                    className={`px-2 py-1 rounded-full text-[10px] font-medium transition-all ${
+                      selectedCategory === cat.id 
                         ? 'bg-gradient-to-r from-pink-400 to-purple-400 text-white shadow-md' 
                         : 'bg-pink-50 dark:bg-purple-900/30 text-pink-600 dark:text-pink-300 border border-border-custom'
                     }`}
                   >
-                    {CATEGORY_EMOJIS[cat]} {cat}
+                    {cat.emoji} {cat.label}
                   </motion.button>
                 ))}
               </div>
 
-              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+              <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
                 <AnimatePresence>
                   {filteredIdeas.map(idea => (
                     <DraggableIdea key={idea.id} idea={idea} onDelete={deleteIdea} />
@@ -318,6 +427,7 @@ export default function CouplePlanner() {
 
             {/* Section 2: Calendar */}
             <motion.div 
+              ref={calendarRef}
               initial={{ y: 50, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               className="lg:col-span-2 bg-card-bg backdrop-blur-md rounded-3xl shadow-xl p-5 border-2 border-border-custom"
@@ -330,7 +440,7 @@ export default function CouplePlanner() {
                   </span>
                 </h2>
                 <span className="text-xs text-secondary bg-card-bg px-3 py-1 rounded-full border border-border-custom">
-                  Click day to view 💕
+                  Click day to plan ⏰
                 </span>
               </div>
 
@@ -352,7 +462,6 @@ export default function CouplePlanner() {
                       day={day} 
                       index={idx}
                       ideas={dayIdeas}
-                      onUnschedule={unscheduleIdea}
                       isWeekend={isWeekend}
                       hasActivities={hasActivities}
                       onClick={() => setShowDayModal(day)}
@@ -391,7 +500,6 @@ export default function CouplePlanner() {
               <div className="grid grid-cols-3 gap-2">
                 {MONTH_NAMES.map((month, idx) => {
                   const isSelected = idx === currentDate.getMonth();
-                  const monthDate = new Date(currentDate.getFullYear(), idx, 1);
                   const hasActivities = ideas.some(i => 
                     i.scheduledAt && 
                     i.scheduledAt.getMonth() === idx && 
@@ -421,7 +529,7 @@ export default function CouplePlanner() {
 
               <div className="mt-6 p-4 bg-pink-50 dark:bg-purple-900/20 rounded-2xl border border-border-custom">
                 <h3 className="text-sm font-bold text-primary mb-2 flex items-center gap-2">
-                  <Heart className="w-4 h-4 text-pink-500 fill-pink-500" />
+                  <span className="text-pink-500">📊</span>
                   This Month
                 </h3>
                 <div className="space-y-2 text-xs text-secondary">
@@ -430,13 +538,15 @@ export default function CouplePlanner() {
                     <span className="font-bold text-primary">{scheduledThisMonth.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Spent:</span>
-                    <span className="font-bold text-primary">${spentThisMonth}</span>
+                    <span>Planned by AY:</span>
+                    <span className="font-bold text-pink-500">
+                      {scheduledThisMonth.filter(i => i.author === 'AY').length}
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Remaining:</span>
-                    <span className={`font-bold ${remainingBudget < 0 ? 'text-red-500' : 'text-green-600'}`}>
-                      ${remainingBudget}
+                    <span>Planned by AK:</span>
+                    <span className="font-bold text-purple-500">
+                      {scheduledThisMonth.filter(i => i.author === 'AK').length}
                     </span>
                   </div>
                 </div>
@@ -456,6 +566,80 @@ export default function CouplePlanner() {
             ) : null}
           </DragOverlay>
         </DndContext>
+
+        {/* Day Schedule Modal with 24h Timeline */}
+        <AnimatePresence>
+          {showDayModal && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50"
+              onClick={() => setShowDayModal(null)}
+            >
+              <motion.div 
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                className="bg-card-bg rounded-3xl p-6 w-full max-w-4xl shadow-2xl border-4 border-border-custom max-h-[90vh] overflow-y-auto"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <h3 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
+                      {format(showDayModal, 'EEEE, MMMM do')}
+                    </h3>
+                    <p className="text-sm text-secondary">Drag ideas to timeline to schedule ⏰</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <motion.button 
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => setShowExportModal(true)}
+                      className="p-2 bg-blue-100 dark:bg-blue-900 text-blue-600 rounded-full"
+                    >
+                      <Download className="w-5 h-5" />
+                    </motion.button>
+                    <motion.button 
+                      whileHover={{ scale: 1.1, rotate: 90 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => setShowDayModal(null)}
+                      className="p-2 bg-pink-100 dark:bg-pink-900 text-pink-600 rounded-full"
+                    >
+                      <X className="w-5 h-5" />
+                    </motion.button>
+                  </div>
+                </div>
+
+                {/* 24-Hour Timeline */}
+                <DndContext onDragEnd={handleDragEnd} onDragStart={(e) => setActiveDragId(e.active.id as string)}>
+                  <div className="space-y-1 max-h-[400px] overflow-y-auto pr-2">
+                    {TIME_SLOTS.map((time, idx) => {
+                      const hour = parseInt(time.split(':')[0]);
+                      const isHour = time.endsWith(':00');
+                      const slotIdeas = ideas.filter(i => 
+                        i.scheduledAt && 
+                        isSameDay(i.scheduledAt, showDayModal) && 
+                        i.startTime === time
+                      );
+                      
+                      return (
+                        <DroppableTimeSlot
+                          key={time}
+                          time={time}
+                          index={idx}
+                          ideas={slotIdeas}
+                          isHour={isHour}
+                          onUnschedule={unscheduleIdea}
+                        />
+                      );
+                    })}
+                  </div>
+                </DndContext>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Add Idea Modal */}
         <AnimatePresence>
@@ -548,8 +732,8 @@ export default function CouplePlanner() {
                       value={newIdea.category}
                       onChange={e => setNewIdea({...newIdea, category: e.target.value})}
                     >
-                      {CATEGORIES.filter(c => c !== 'all').map(c => (
-                        <option key={c} value={c}>{CATEGORY_EMOJIS[c]} {c}</option>
+                      {CATEGORIES.filter(c => c.id !== 'all').map(c => (
+                        <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>
                       ))}
                     </select>
                   </div>
@@ -570,127 +754,6 @@ export default function CouplePlanner() {
                     className="w-full p-4 bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400 text-white rounded-2xl font-bold text-lg shadow-lg"
                   >
                     Add to Our List 💕
-                  </motion.button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Day View Modal */}
-        <AnimatePresence>
-          {showDayModal && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50"
-              onClick={() => setShowDayModal(null)}
-            >
-              <motion.div 
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.8, opacity: 0 }}
-                className="bg-card-bg rounded-3xl p-6 w-full max-w-lg shadow-2xl border-4 border-border-custom max-h-[80vh] overflow-y-auto"
-                onClick={e => e.stopPropagation()}
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
-                    {format(showDayModal, 'EEEE, MMMM do')}
-                  </h3>
-                  <motion.button 
-                    whileHover={{ scale: 1.1, rotate: 90 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setShowDayModal(null)}
-                    className="text-secondary hover:text-pink-500 bg-pink-50 dark:bg-purple-900 p-2 rounded-full"
-                  >
-                    <X className="w-5 h-5" />
-                  </motion.button>
-                </div>
-
-                <div className="space-y-3">
-                  {ideas.filter(i => i.scheduledAt && isSameDay(i.scheduledAt, showDayModal)).map(idea => (
-                    <motion.div 
-                      key={idea.id}
-                      initial={{ x: -20, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      className="p-4 bg-pink-50 dark:bg-purple-900/30 rounded-2xl border-2 border-border-custom flex justify-between items-center"
-                    >
-                      <div>
-                        <h4 className="font-bold text-primary">{idea.title}</h4>
-                        <p className="text-sm text-secondary">{idea.description}</p>
-                        <div className="flex gap-2 mt-2 text-xs text-secondary">
-                          <span>⏰ {idea.duration}</span>
-                          {idea.budget && <span>💰 ${idea.budget}</span>}
-                        </div>
-                      </div>
-                      <motion.button
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => unscheduleIdea(idea.id)}
-                        className="p-2 bg-red-100 dark:bg-red-900 text-red-500 rounded-full"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </motion.button>
-                    </motion.div>
-                  ))}
-                  
-                  {ideas.filter(i => i.scheduledAt && isSameDay(i.scheduledAt, showDayModal)).length === 0 && (
-                    <div className="text-center py-8 text-secondary">
-                      <span className="text-4xl mb-2 block">🌸</span>
-                      <p>No plans yet! Drag ideas from the left 💕</p>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Budget Modal */}
-        <AnimatePresence>
-          {showBudgetModal && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50"
-            >
-              <motion.div 
-                initial={{ scale: 0.8, y: 50 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.8, y: 50 }}
-                className="bg-card-bg rounded-3xl p-6 w-full max-w-md shadow-2xl border-4 border-border-custom text-center"
-              >
-                <div className="text-6xl mb-4">💰</div>
-                <h3 className="text-2xl font-bold text-primary mb-2">Set Budget for {format(currentDate, 'MMMM yyyy')}</h3>
-                <p className="text-secondary mb-4">How much are we planning to spend this month?</p>
-                
-                <input
-                  type="number"
-                  placeholder="Enter amount (AED)"
-                  className="w-full p-4 border-2 border-border-custom rounded-2xl focus:outline-none focus:border-pink-400 text-center text-2xl font-bold bg-transparent text-primary mb-4"
-                  value={tempBudget}
-                  onChange={e => setTempBudget(e.target.value)}
-                  autoFocus
-                />
-                
-                <div className="flex gap-3">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setShowBudgetModal(false)}
-                    className="flex-1 p-3 border-2 border-border-custom rounded-2xl text-secondary font-medium"
-                  >
-                    Skip for now
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={setBudget}
-                    className="flex-1 p-3 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-2xl font-bold"
-                  >
-                    Set Budget 💕
                   </motion.button>
                 </div>
               </motion.div>
@@ -731,6 +794,9 @@ export default function CouplePlanner() {
                   {randomPick.imageUrl && (
                     <img src={randomPick.imageUrl} alt="" className="w-full h-32 object-cover rounded-xl mb-4 shadow-md" />
                   )}
+                  <div className={`inline-block px-3 py-1 rounded-full text-xs text-white mb-2 ${randomPick.author === 'AY' ? 'bg-pink-500' : 'bg-purple-500'}`}>
+                    Added by {randomPick.author}
+                  </div>
                   <h4 className="text-xl font-bold text-primary mb-2">{randomPick.title}</h4>
                   <p className="text-secondary mb-3">{randomPick.description}</p>
                   <div className="flex justify-center gap-4 text-sm text-secondary">
@@ -746,6 +812,113 @@ export default function CouplePlanner() {
                 >
                   Yay! Let's do it! 🎉
                 </motion.button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Budget Modal */}
+        <AnimatePresence>
+          {showBudgetModal && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50"
+            >
+              <motion.div 
+                initial={{ scale: 0.8, y: 50 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.8, y: 50 }}
+                className="bg-card-bg rounded-3xl p-6 w-full max-w-md shadow-2xl border-4 border-border-custom text-center"
+              >
+                <div className="text-6xl mb-4">💰</div>
+                <h3 className="text-2xl font-bold text-primary mb-2">Set Budget for {format(currentDate, 'MMMM yyyy')}</h3>
+                <p className="text-secondary mb-4">How much are we planning to spend this month?</p>
+                
+                <input
+                  type="number"
+                  placeholder="Enter amount (AED)"
+                  className="w-full p-4 border-2 border-border-custom rounded-2xl focus:outline-none focus:border-pink-400 text-center text-2xl font-bold bg-transparent text-primary mb-4"
+                  value={tempBudget}
+                  onChange={e => setTempBudget(e.target.value)}
+                  autoFocus
+                />
+                
+                <div className="flex gap-3">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowBudgetModal(false)}
+                    className="flex-1 p-3 border-2 border-border-custom rounded-2xl text-secondary font-medium"
+                  >
+                    Cancel
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={setBudget}
+                    className="flex-1 p-3 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-2xl font-bold"
+                  >
+                    Set Budget 💕
+                  </motion.button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Export Modal */}
+        <AnimatePresence>
+          {showExportModal && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50"
+            >
+              <motion.div 
+                initial={{ scale: 0.8, y: 50 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.8, y: 50 }}
+                className="bg-card-bg rounded-3xl p-6 w-full max-w-sm shadow-2xl border-4 border-border-custom text-center"
+              >
+                <div className="text-5xl mb-4">📥</div>
+                <h3 className="text-xl font-bold text-primary mb-4">Export Calendar</h3>
+                <p className="text-secondary mb-6">Choose what to export as PDF</p>
+                
+                <div className="space-y-3">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => exportCalendar('month')}
+                    className="w-full p-4 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2"
+                  >
+                    <Calendar className="w-5 h-5" />
+                    Export Whole Month
+                  </motion.button>
+                  
+                  {showDayModal && (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => exportCalendar('day')}
+                      className="w-full p-4 bg-gradient-to-r from-blue-400 to-cyan-400 text-white rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2"
+                    >
+                      <Clock className="w-5 h-5" />
+                      Export This Day Only
+                    </motion.button>
+                  )}
+                  
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowExportModal(false)}
+                    className="w-full p-3 border-2 border-border-custom rounded-2xl text-secondary font-medium"
+                  >
+                    Cancel
+                  </motion.button>
+                </div>
               </motion.div>
             </motion.div>
           )}
@@ -775,13 +948,18 @@ function DraggableIdea({ idea, onDelete }: { idea: Idea; onDelete: (id: string) 
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.8 }}
       whileHover={{ scale: 1.02, y: -2 }}
-      className={`p-3 bg-white dark:bg-purple-900/40 border-l-4 border-pink-400 rounded-2xl cursor-move shadow-md hover:shadow-xl transition-all ${isDragging ? 'opacity-50 rotate-3 scale-105' : ''}`}
+      className={`p-3 bg-white dark:bg-purple-900/40 border-l-4 ${idea.author === 'AY' ? 'border-pink-400' : 'border-purple-400'} rounded-2xl cursor-move shadow-md hover:shadow-xl transition-all ${isDragging ? 'opacity-50 rotate-3 scale-105' : ''}`}
     >
       <div className="flex justify-between items-start">
         <div className="flex-1">
           {idea.imageUrl && (
             <img src={idea.imageUrl} alt="" className="w-full h-16 object-cover rounded-lg mb-2" />
           )}
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`text-[10px] px-2 py-0.5 rounded-full text-white ${idea.author === 'AY' ? 'bg-pink-500' : 'bg-purple-500'}`}>
+              {idea.author}
+            </span>
+          </div>
           <h3 className="font-bold text-primary text-sm">{idea.title}</h3>
           <div className="flex items-center justify-between mt-1 text-xs text-secondary">
             <span className="flex items-center gap-1">
@@ -804,11 +982,10 @@ function DraggableIdea({ idea, onDelete }: { idea: Idea; onDelete: (id: string) 
   );
 }
 
-function DroppableDay({ day, index, ideas, onUnschedule, isWeekend, hasActivities, onClick }: { 
+function DroppableDay({ day, index, ideas, isWeekend, hasActivities, onClick }: { 
   day: Date; 
   index: number; 
   ideas: Idea[];
-  onUnschedule: (id: string) => void;
   isWeekend: boolean;
   hasActivities: boolean;
   onClick: () => void;
@@ -816,6 +993,9 @@ function DroppableDay({ day, index, ideas, onUnschedule, isWeekend, hasActivitie
   const { isOver, setNodeRef } = useDroppable({
     id: `day-${index}`,
   });
+
+  const ayCount = ideas.filter(i => i.author === 'AY').length;
+  const akCount = ideas.filter(i => i.author === 'AK').length;
 
   return (
     <motion.div
@@ -828,14 +1008,83 @@ function DroppableDay({ day, index, ideas, onUnschedule, isWeekend, hasActivitie
       <div className={`text-sm font-bold mb-1 ${isWeekend ? 'text-pink-500' : 'text-primary'}`}>{format(day, 'd')}</div>
       <div className="space-y-1">
         {ideas.slice(0, 2).map(idea => (
-          <div key={idea.id} className="text-[10px] p-1 rounded bg-pink-100 dark:bg-purple-800 text-pink-700 dark:text-pink-200 truncate">
+          <div key={idea.id} className={`text-[10px] p-1 rounded truncate ${idea.author === 'AY' ? 'bg-pink-100 text-pink-700' : 'bg-purple-100 text-purple-700'}`}>
             {idea.title}
           </div>
         ))}
         {ideas.length > 2 && (
           <div className="text-[10px] text-center text-pink-500 font-bold">+{ideas.length - 2} more</div>
         )}
+        {(ayCount > 0 || akCount > 0) && (
+          <div className="flex gap-1 mt-1">
+            {ayCount > 0 && <span className="text-[8px] bg-pink-400 text-white px-1 rounded">{ayCount}</span>}
+            {akCount > 0 && <span className="text-[8px] bg-purple-400 text-white px-1 rounded">{akCount}</span>}
+          </div>
+        )}
       </div>
     </motion.div>
+  );
+}
+
+function DroppableTimeSlot({ time, index, ideas, isHour, onUnschedule }: {
+  time: string;
+  index: number;
+  ideas: Idea[];
+  isHour: boolean;
+  onUnschedule: (id: string) => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `time-${index}`,
+  });
+
+  const hour = parseInt(time.split(':')[0]);
+  const isNight = hour < 6 || hour >= 22;
+  const isMorning = hour >= 6 && hour < 12;
+  const isAfternoon = hour >= 12 && hour < 18;
+  const isEvening = hour >= 18 && hour < 22;
+
+  let timeEmoji = '🌙';
+  if (isMorning) timeEmoji = '🌅';
+  else if (isAfternoon) timeEmoji = '☀️';
+  else if (isEvening) timeEmoji = '🌆';
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex items-center gap-3 p-2 rounded-xl border-2 transition-all ${isHour ? 'bg-pink-50/50 dark:bg-purple-900/20' : 'bg-transparent'} ${isOver ? 'border-pink-400 bg-pink-100 dark:bg-purple-800 scale-[1.02]' : 'border-transparent hover:border-pink-200'}`}
+    >
+      <div className={`w-20 text-xs font-bold text-secondary flex items-center gap-1 ${isHour ? 'text-primary' : ''}`}>
+        {isHour && <span>{timeEmoji}</span>}
+        {time}
+      </div>
+      <div className="flex-1 flex gap-2">
+        {ideas.map(idea => (
+          <motion.div
+            key={idea.id}
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className={`flex-1 p-2 rounded-lg text-xs ${idea.author === 'AY' ? 'bg-pink-100 border-pink-300' : 'bg-purple-100 border-purple-300'} border-2 shadow-sm flex justify-between items-center`}
+          >
+            <div>
+              <div className="font-bold text-primary">{idea.title}</div>
+              <div className="text-[10px] text-secondary">{idea.duration} • ${idea.budget}</div>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onUnschedule(idea.id)}
+              className="p-1 text-red-400 hover:bg-red-100 rounded-full"
+            >
+              <X className="w-3 h-3" />
+            </motion.button>
+          </motion.div>
+        ))}
+        {ideas.length === 0 && isOver && (
+          <div className="flex-1 p-2 rounded-lg border-2 border-dashed border-pink-300 text-center text-xs text-pink-400">
+            Drop here! ✨
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
