@@ -10,7 +10,7 @@
     --text-secondary: #6b7280;
     --accent-pink: #ec4899;
     --accent-purple: #8b5cf6;
-    --card-bg: rgba(255, 255, 255, 0.8);
+    --card-bg: rgba(255, 255, 255, 0.9);
     --border-color: #fbcfe8;
   }
 
@@ -21,7 +21,7 @@
     --text-secondary: #d8b4fe;
     --accent-pink: #f472b6;
     --accent-purple: #a78bfa;
-    --card-bg: rgba(45, 27, 78, 0.8);
+    --card-bg: rgba(45, 27, 78, 0.9);
     --border-color: #4c1d95;
   }
 
@@ -41,8 +41,26 @@
   }
 }
 
+/* Fix dropdown contrast in dark mode */
+.dark select {
+  background-color: #2d1b4e;
+  color: #f3e8ff;
+  border-color: #4c1d95;
+}
+
+.dark select option {
+  background-color: #2d1b4e;
+  color: #f3e8ff;
+}
+
+.dark input, .dark textarea {
+  background-color: transparent;
+  color: #f3e8ff;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: var(--bg-primary);
@@ -76,5 +94,18 @@
     50% { transform: scale(1.05); }
     70% { transform: scale(0.9); }
     100% { transform: scale(1); opacity: 1; }
+  }
+
+  .timeline-gradient-morning {
+    background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%);
+  }
+  .timeline-gradient-day {
+    background: linear-gradient(90deg, #dbeafe 0%, #bfdbfe 100%);
+  }
+  .timeline-gradient-evening {
+    background: linear-gradient(90deg, #ddd6fe 0%, #c4b5fd 100%);
+  }
+  .timeline-gradient-night {
+    background: linear-gradient(90deg, #1e1b4b 0%, #312e81 100%);
   }
 }

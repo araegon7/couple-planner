@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { DndContext, DragEndEvent, useDraggable, useDroppable, DragOverlay } from '@dnd-kit/core';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfYear, endOfYear, eachMonthOfInterval, getYear, setYear, setMonth } from 'date-fns';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { DndContext, DragEndEvent, useDraggable, useDroppable, DragOverlay, PointerSensor, useSensor, useSensors, DragStartEvent } from '@dnd-kit/core';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfYear, endOfYear, eachMonthOfInterval, getYear, setYear, setMonth, addMinutes, setHours, setMinutes, isSameMonth } from 'date-fns';
 import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload, Sparkles, Moon, Sun, ChevronLeft, ChevronRight, Trash2, Settings, Download, Users, Gamepad2, Volleyball, ShoppingBag, Drama, Dumbbell, BookOpen, Wine, TreePine, Landmark } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, EMOJIS } from './providers';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
 
 interface Idea {
   id: string;
@@ -38,31 +37,45 @@ const INITIAL_IDEAS: Idea[] = [
 ];
 
 const CATEGORIES = [
-  { id: 'all', emoji: '✨', icon: Sparkles, label: 'all' },
-  { id: 'food', emoji: '🍽️', icon: null, label: 'food' },
-  { id: 'adventure', emoji: '🎢', icon: null, label: 'adventure' },
-  { id: 'chill', emoji: '😌', icon: null, label: 'chill' },
-  { id: 'sightseeing', emoji: '📸', icon: null, label: 'sightseeing' },
-  { id: 'romantic', emoji: '💕', icon: null, label: 'romantic' },
-  { id: 'gaming', emoji: '🎮', icon: Gamepad2, label: 'gaming' },
-  { id: 'sports', emoji: '🏐', icon: Volleyball, label: 'sports' },
-  { id: 'shopping', emoji: '🛍️', icon: ShoppingBag, label: 'shopping' },
-  { id: 'entertainment', emoji: '🎭', icon: Drama, label: 'entertainment' },
-  { id: 'fitness', emoji: '🏋️', icon: Dumbbell, label: 'fitness' },
-  { id: 'learning', emoji: '📚', icon: BookOpen, label: 'learning' },
-  { id: 'nightlife', emoji: '🍷', icon: Wine, label: 'nightlife' },
-  { id: 'nature', emoji: '🌳', icon: TreePine, label: 'nature' },
-  { id: 'culture', emoji: '🏛️', icon: Landmark, label: 'culture' },
+  { id: 'all', emoji: '✨', label: 'all' },
+  { id: 'food', emoji: '🍽️', label: 'food' },
+  { id: 'adventure', emoji: '🎢', label: 'adventure' },
+  { id: 'chill', emoji: '😌', label: 'chill' },
+  { id: 'sightseeing', emoji: '📸', label: 'sightseeing' },
+  { id: 'romantic', emoji: '💕', label: 'romantic' },
+  { id: 'gaming', emoji: '🎮', label: 'gaming' },
+  { id: 'sports', emoji: '🏐', label: 'sports' },
+  { id: 'shopping', emoji: '🛍️', label: 'shopping' },
+  { id: 'entertainment', emoji: '🎭', label: 'entertainment' },
+  { id: 'fitness', emoji: '🏋️', label: 'fitness' },
+  { id: 'learning', emoji: '📚', label: 'learning' },
+  { id: 'nightlife', emoji: '🍷', label: 'nightlife' },
+  { id: 'nature', emoji: '🌳', label: 'nature' },
+  { id: 'culture', emoji: '🏛️', label: 'culture' },
 ];
 
 const COLORS = ['rose', 'pink', 'purple', 'blue', 'cyan', 'teal', 'emerald', 'amber', 'orange', 'red'];
 const AUTHOR_COLORS = { AY: 'bg-pink-500', AK: 'bg-purple-500' };
+const AUTHOR_BG_COLORS = { AY: 'bg-pink-100', AK: 'bg-purple-100' };
+const AUTHOR_TEXT_COLORS = { AY: 'text-pink-700', AK: 'text-purple-700' };
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Generate 30-minute time slots from 00:00 to 23:30
 const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
   const hour = Math.floor(i / 2);
   const minute = (i % 2) * 30;
   return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 });
+
+// Get time period for coloring
+const getTimePeriod = (time: string): 'night' | 'morning' | 'afternoon' | 'evening' => {
+  const hour = parseInt(time.split(':')[0]);
+  if (hour < 6) return 'night';
+  if (hour < 12) return 'morning';
+  if (hour < 18) return 'afternoon';
+  if (hour < 22) return 'evening';
+  return 'night';
+};
 
 export default function CouplePlanner() {
   const { theme, toggleTheme, author, toggleAuthor } = useTheme();
@@ -73,7 +86,6 @@ export default function CouplePlanner() {
   const [showRandomModal, setShowRandomModal] = useState(false);
   const [showDayModal, setShowDayModal] = useState<Date | null>(null);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
   const [randomPick, setRandomPick] = useState<Idea | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudget[]>([]);
@@ -84,6 +96,16 @@ export default function CouplePlanner() {
   const [tempBudget, setTempBudget] = useState('');
   const [randomEmoji, setRandomEmoji] = useState('✨');
   const calendarRef = useRef<HTMLDivElement>(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+
+  // Custom sensor for better drag detection
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
   useEffect(() => {
     setRandomEmoji(EMOJIS[Math.floor(Math.random() * EMOJIS.length)]);
@@ -95,7 +117,6 @@ export default function CouplePlanner() {
   
   const yearStart = startOfYear(currentDate);
   const yearEnd = endOfYear(currentDate);
-  const months = eachMonthOfInterval({ start: yearStart, end: yearEnd });
 
   const currentMonthBudget = monthlyBudgets.find(
     b => b.year === currentDate.getFullYear() && b.month === currentDate.getMonth()
@@ -116,24 +137,63 @@ export default function CouplePlanner() {
   const remainingBudget = totalBudget - spentThisMonth;
   const isOverBudget = remainingBudget < 0;
 
+  // Track mouse position for accurate drag overlay
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePosition({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveDragId(null);
     
-    if (over && over.id.toString().startsWith('day-')) {
+    if (!over) return;
+
+    // Dropping on calendar day
+    if (over.id.toString().startsWith('day-')) {
       const dayIndex = parseInt(over.id.toString().replace('day-', ''));
       const date = days[dayIndex];
+      
+      // If day modal is open, don't schedule to calendar, only to timeline
+      if (showDayModal && isSameDay(date, showDayModal)) {
+        return;
+      }
+      
       setIdeas(ideas.map(idea => 
         idea.id === active.id 
           ? { ...idea, scheduledAt: date, isScheduled: true, author }
           : idea
       ));
-    } else if (over && over.id.toString().startsWith('time-')) {
+    }
+    
+    // Dropping on timeline time slot
+    if (over.id.toString().startsWith('time-')) {
       const timeIndex = parseInt(over.id.toString().replace('time-', ''));
-      const time = TIME_SLOTS[timeIndex];
-      const [hours, minutes] = time.split(':').map(Number);
-      const endHours = (hours + 2) % 24;
-      const endTime = `${endHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      const startTime = TIME_SLOTS[timeIndex];
+      
+      // Calculate end time based on duration
+      const draggedIdea = ideas.find(i => i.id === active.id);
+      let durationMinutes = 120; // default 2 hours
+      
+      if (draggedIdea?.duration) {
+        if (draggedIdea.duration.includes('1-2 hours')) durationMinutes = 90;
+        else if (draggedIdea.duration.includes('Half day')) durationMinutes = 240;
+        else if (draggedIdea.duration.includes('Full day')) durationMinutes = 480;
+        else if (draggedIdea.duration.includes('Evening')) durationMinutes = 180;
+      }
+      
+      const [startHour, startMin] = startTime.split(':').map(Number);
+      const endTotalMinutes = startHour * 60 + startMin + durationMinutes;
+      const endHour = Math.floor(endTotalMinutes / 60) % 24;
+      const endMin = endTotalMinutes % 60;
+      const endTime = `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`;
       
       setIdeas(ideas.map(idea => {
         if (idea.id === active.id) {
@@ -142,7 +202,7 @@ export default function CouplePlanner() {
             scheduledAt: showDayModal, 
             isScheduled: true, 
             author,
-            startTime: time,
+            startTime,
             endTime
           };
         }
@@ -181,15 +241,20 @@ export default function CouplePlanner() {
     setShowAddModal(false);
   };
 
-  const deleteIdea = (id: string) => {
-    setIdeas(ideas.filter(i => i.id !== id));
-  };
+  // FIXED: Delete with stop propagation to prevent drag
+  const deleteIdea = useCallback((id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    e?.preventDefault();
+    setIdeas(prev => prev.filter(i => i.id !== id));
+  }, []);
 
-  const unscheduleIdea = (id: string) => {
-    setIdeas(ideas.map(idea => 
+  const unscheduleIdea = useCallback((id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    e?.preventDefault();
+    setIdeas(prev => prev.map(idea => 
       idea.id === id ? { ...idea, scheduledAt: null, isScheduled: false, startTime: undefined, endTime: undefined } : idea
     ));
-  };
+  }, []);
 
   const pickRandom = () => {
     const available = ideas.filter(i => !i.isScheduled);
@@ -223,37 +288,79 @@ export default function CouplePlanner() {
     setCurrentDate(setMonth(currentDate, monthIndex));
   };
 
-  const exportCalendar = async (type: 'month' | 'day') => {
-    if (!calendarRef.current) return;
-    
-    const canvas = await html2canvas(calendarRef.current);
-    const imgData = canvas.toDataURL('image/png');
+  // Excel Export
+  const exportToExcel = (type: 'month' | 'day') => {
+    const exportData: any[] = [];
     
     if (type === 'month') {
-      const pdf = new jsPDF();
-      const imgWidth = 210;
-      const pageHeight = 295;
-      const imgHeight = canvas.height * imgWidth / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
+      // Get all scheduled activities for current month
+      const monthActivities = ideas
+        .filter(i => i.isScheduled && i.scheduledAt && isSameMonth(i.scheduledAt, currentDate))
+        .sort((a, b) => {
+          if (!a.scheduledAt || !b.scheduledAt) return 0;
+          const dateCompare = a.scheduledAt.getTime() - b.scheduledAt.getTime();
+          if (dateCompare !== 0) return dateCompare;
+          return (a.startTime || '00:00').localeCompare(b.startTime || '00:00');
+        });
 
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+      monthActivities.forEach(idea => {
+        exportData.push({
+          'Date': idea.scheduledAt ? format(idea.scheduledAt, 'MMM dd, yyyy') : '',
+          'Time': idea.startTime && idea.endTime ? `${idea.startTime} - ${idea.endTime}` : 'All day',
+          'Activity': idea.title.replace(/^[^\w\s]/, '').trim(), // Remove emoji prefix for cleaner look
+          'Category': CATEGORIES.find(c => c.id === idea.category)?.label || idea.category,
+          'Budget (AED)': idea.budget || 0,
+          'Planned By': idea.author,
+          'Description': idea.description || ''
+        });
+      });
 
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-      pdf.save(`A-A-Adventure-${format(currentDate, 'MMMM-yyyy')}.pdf`);
-    } else if (showDayModal) {
-      const pdf = new jsPDF();
-      pdf.addImage(imgData, 'PNG', 0, 0, 210, 150);
-      pdf.save(`A-A-Adventure-${format(showDayModal, 'MMMM-do-yyyy')}.pdf`);
+      // Add summary row
+      exportData.push({
+        'Date': '',
+        'Time': '',
+        'Activity': 'TOTAL',
+        'Category': '',
+        'Budget (AED)': monthActivities.reduce((sum, i) => sum + (i.budget || 0), 0),
+        'Planned By': '',
+        'Description': ''
+      });
+
+    } else if (showDayModal && type === 'day') {
+      const dayActivities = ideas
+        .filter(i => i.isScheduled && i.scheduledAt && isSameDay(i.scheduledAt, showDayModal))
+        .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'));
+
+      dayActivities.forEach(idea => {
+        exportData.push({
+          'Time': idea.startTime && idea.endTime ? `${idea.startTime} - ${idea.endTime}` : 'All day',
+          'Activity': idea.title.replace(/^[^\w\s]/, '').trim(),
+          'Category': CATEGORIES.find(c => c.id === idea.category)?.label || idea.category,
+          'Budget (AED)': idea.budget || 0,
+          'Planned By': idea.author,
+          'Description': idea.description || ''
+        });
+      });
+
+      exportData.push({
+        'Time': '',
+        'Activity': 'TOTAL',
+        'Category': '',
+        'Budget (AED)': dayActivities.reduce((sum, i) => sum + (i.budget || 0), 0),
+        'Planned By': '',
+        'Description': ''
+      });
     }
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Activities');
     
-    setShowExportModal(false);
+    const fileName = type === 'month' 
+      ? `A-A-Adventure-${format(currentDate, 'MMMM-yyyy')}.xlsx`
+      : `A-A-Adventure-${format(showDayModal!, 'MMMM-do-yyyy')}.xlsx`;
+    
+    XLSX.writeFile(wb, fileName);
   };
 
   const activeIdea = ideas.find(i => i.id === activeDragId);
@@ -271,14 +378,6 @@ export default function CouplePlanner() {
               className="p-3 rounded-full bg-card-bg border-2 border-border-custom shadow-lg"
             >
               {theme === 'dark' ? <Sun className="w-6 h-6 text-yellow-400" /> : <Moon className="w-6 h-6 text-purple-600" />}
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setShowExportModal(true)}
-              className="p-3 rounded-full bg-card-bg border-2 border-border-custom shadow-lg"
-            >
-              <Download className="w-6 h-6 text-pink-500" />
             </motion.button>
           </div>
 
@@ -352,8 +451,9 @@ export default function CouplePlanner() {
         </header>
 
         <DndContext 
+          sensors={sensors}
           onDragEnd={handleDragEnd}
-          onDragStart={(e) => setActiveDragId(e.active.id as string)}
+          onDragStart={handleDragStart}
         >
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             
@@ -409,7 +509,7 @@ export default function CouplePlanner() {
               <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
                 <AnimatePresence>
                   {filteredIdeas.map(idea => (
-                    <DraggableIdea key={idea.id} idea={idea} onDelete={deleteIdea} />
+                    <IdeaCard key={idea.id} idea={idea} onDelete={deleteIdea} />
                   ))}
                 </AnimatePresence>
                 {filteredIdeas.length === 0 && (
@@ -439,9 +539,20 @@ export default function CouplePlanner() {
                     {format(currentDate, 'MMMM yyyy')}
                   </span>
                 </h2>
-                <span className="text-xs text-secondary bg-card-bg px-3 py-1 rounded-full border border-border-custom">
-                  Click day to plan ⏰
-                </span>
+                <div className="flex gap-2">
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => exportToExcel('month')}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-full text-sm font-medium"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export Month
+                  </motion.button>
+                  <span className="text-xs text-secondary bg-card-bg px-3 py-1 rounded-full border border-border-custom flex items-center">
+                    Click day to plan ⏰
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-7 gap-2">
@@ -457,7 +568,7 @@ export default function CouplePlanner() {
                   const hasActivities = dayIdeas.length > 0;
                   
                   return (
-                    <DroppableDay 
+                    <CalendarDay 
                       key={day.toISOString()} 
                       day={day} 
                       index={idx}
@@ -554,20 +665,27 @@ export default function CouplePlanner() {
             </motion.div>
           </div>
 
-          <DragOverlay>
+          {/* FIXED: Drag overlay that follows cursor accurately */}
+          <DragOverlay dropAnimation={null}>
             {activeIdea ? (
-              <motion.div 
-                initial={{ scale: 1.1 }}
-                className="p-4 bg-white dark:bg-purple-800 border-2 border-pink-400 rounded-2xl shadow-2xl opacity-90 rotate-3"
+              <div 
+                className="p-4 bg-white dark:bg-purple-800 border-2 border-pink-400 rounded-2xl shadow-2xl opacity-90 pointer-events-none"
+                style={{
+                  position: 'fixed',
+                  left: mousePosition.x - 60,
+                  top: mousePosition.y - 40,
+                  transform: 'translate(0, 0)',
+                  zIndex: 9999,
+                }}
               >
-                <p className="font-bold text-primary">{activeIdea.title}</p>
+                <p className="font-bold text-primary text-sm">{activeIdea.title}</p>
                 <p className="text-xs text-secondary">{activeIdea.duration}</p>
-              </motion.div>
+              </div>
             ) : null}
           </DragOverlay>
         </DndContext>
 
-        {/* Day Schedule Modal with 24h Timeline */}
+        {/* Day Schedule Modal with Horizontal Timeline */}
         <AnimatePresence>
           {showDayModal && (
             <motion.div 
@@ -581,7 +699,7 @@ export default function CouplePlanner() {
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.8, opacity: 0 }}
-                className="bg-card-bg rounded-3xl p-6 w-full max-w-4xl shadow-2xl border-4 border-border-custom max-h-[90vh] overflow-y-auto"
+                className="bg-card-bg rounded-3xl p-6 w-full max-w-5xl shadow-2xl border-4 border-border-custom max-h-[90vh] overflow-hidden flex flex-col"
                 onClick={e => e.stopPropagation()}
               >
                 <div className="flex justify-between items-center mb-4">
@@ -589,14 +707,14 @@ export default function CouplePlanner() {
                     <h3 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
                       {format(showDayModal, 'EEEE, MMMM do')}
                     </h3>
-                    <p className="text-sm text-secondary">Drag ideas to timeline to schedule ⏰</p>
+                    <p className="text-sm text-secondary">Drag ideas to timeline to schedule ⏰ (30-min snap)</p>
                   </div>
                   <div className="flex gap-2">
                     <motion.button 
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => setShowExportModal(true)}
-                      className="p-2 bg-blue-100 dark:bg-blue-900 text-blue-600 rounded-full"
+                      onClick={() => exportToExcel('day')}
+                      className="p-2 bg-green-100 dark:bg-green-900 text-green-600 rounded-full"
                     >
                       <Download className="w-5 h-5" />
                     </motion.button>
@@ -611,31 +729,79 @@ export default function CouplePlanner() {
                   </div>
                 </div>
 
-                {/* 24-Hour Timeline */}
-                <DndContext onDragEnd={handleDragEnd} onDragStart={(e) => setActiveDragId(e.active.id as string)}>
-                  <div className="space-y-1 max-h-[400px] overflow-y-auto pr-2">
-                    {TIME_SLOTS.map((time, idx) => {
+                {/* Horizontal Timeline */}
+                <DndContext 
+                  sensors={sensors}
+                  onDragEnd={handleDragEnd}
+                  onDragStart={handleDragStart}
+                >
+                  <div className="flex-1 overflow-y-auto pr-2 space-y-2">
+                    {/* Time period labels */}
+                    <div className="flex gap-1 text-xs font-bold text-secondary mb-2">
+                      <div className="w-20" /> {/* Spacer for time column */}
+                      <div className="flex-1 flex">
+                        <div className="flex-1 text-center bg-yellow-100 dark:bg-yellow-900/30 rounded-lg py-1 text-yellow-700 dark:text-yellow-300">🌙 Night (00-06)</div>
+                        <div className="flex-1 text-center bg-orange-100 dark:bg-orange-900/30 rounded-lg py-1 text-orange-700 dark:text-orange-300">🌅 Morning (06-12)</div>
+                        <div className="flex-1 text-center bg-blue-100 dark:bg-blue-900/30 rounded-lg py-1 text-blue-700 dark:text-blue-300">☀️ Afternoon (12-18)</div>
+                        <div className="flex-1 text-center bg-purple-100 dark:bg-purple-900/30 rounded-lg py-1 text-purple-700 dark:text-purple-300">🌆 Evening (18-22)</div>
+                        <div className="flex-1 text-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg py-1 text-indigo-700 dark:text-indigo-300">🌙 Night (22-24)</div>
+                      </div>
+                    </div>
+
+                    {/* Timeline rows */}
+                    {TIME_SLOTS.filter((_, i) => i % 2 === 0).map((time, idx) => {
+                      const actualIndex = idx * 2;
+                      const nextTime = TIME_SLOTS[actualIndex + 1];
                       const hour = parseInt(time.split(':')[0]);
-                      const isHour = time.endsWith(':00');
+                      
+                      // Get activities for this hour slot
                       const slotIdeas = ideas.filter(i => 
                         i.scheduledAt && 
                         isSameDay(i.scheduledAt, showDayModal) && 
-                        i.startTime === time
+                        i.startTime &&
+                        parseInt(i.startTime.split(':')[0]) === hour
                       );
-                      
+
+                      const period = getTimePeriod(time);
+                      const periodColors = {
+                        night: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800',
+                        morning: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800',
+                        afternoon: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800',
+                        evening: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800',
+                      };
+
                       return (
-                        <DroppableTimeSlot
+                        <TimelineRow
                           key={time}
                           time={time}
-                          index={idx}
+                          nextTime={nextTime}
+                          index={actualIndex}
                           ideas={slotIdeas}
-                          isHour={isHour}
+                          periodClass={periodColors[period]}
                           onUnschedule={unscheduleIdea}
                         />
                       );
                     })}
                   </div>
                 </DndContext>
+
+                {/* Current activities summary */}
+                <div className="mt-4 p-4 bg-pink-50 dark:bg-purple-900/20 rounded-2xl border border-border-custom">
+                  <h4 className="font-bold text-primary mb-2">Today's Activities</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {ideas
+                      .filter(i => i.scheduledAt && isSameDay(i.scheduledAt, showDayModal))
+                      .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'))
+                      .map(idea => (
+                        <div key={idea.id} className={`px-3 py-1 rounded-full text-xs font-medium ${AUTHOR_BG_COLORS[idea.author]} ${AUTHOR_TEXT_COLORS[idea.author]}`}>
+                          {idea.startTime} {idea.title.substring(0, 20)}{idea.title.length > 20 ? '...' : ''}
+                        </div>
+                      ))}
+                    {ideas.filter(i => i.scheduledAt && isSameDay(i.scheduledAt, showDayModal)).length === 0 && (
+                      <span className="text-secondary text-sm">No activities scheduled yet. Drag from &quot;Our Ideas&quot; to the timeline above! ✨</span>
+                    )}
+                  </div>
+                </div>
               </motion.div>
             </motion.div>
           )}
@@ -810,7 +976,7 @@ export default function CouplePlanner() {
                   onClick={() => setShowRandomModal(false)}
                   className="px-8 py-3 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-full font-bold shadow-lg"
                 >
-                  Yay! Let's do it! 🎉
+                  Yay! Let&apos;s do it! 🎉
                 </motion.button>
               </motion.div>
             </motion.div>
@@ -867,68 +1033,13 @@ export default function CouplePlanner() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Export Modal */}
-        <AnimatePresence>
-          {showExportModal && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50"
-            >
-              <motion.div 
-                initial={{ scale: 0.8, y: 50 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.8, y: 50 }}
-                className="bg-card-bg rounded-3xl p-6 w-full max-w-sm shadow-2xl border-4 border-border-custom text-center"
-              >
-                <div className="text-5xl mb-4">📥</div>
-                <h3 className="text-xl font-bold text-primary mb-4">Export Calendar</h3>
-                <p className="text-secondary mb-6">Choose what to export as PDF</p>
-                
-                <div className="space-y-3">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => exportCalendar('month')}
-                    className="w-full p-4 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2"
-                  >
-                    <Calendar className="w-5 h-5" />
-                    Export Whole Month
-                  </motion.button>
-                  
-                  {showDayModal && (
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => exportCalendar('day')}
-                      className="w-full p-4 bg-gradient-to-r from-blue-400 to-cyan-400 text-white rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2"
-                    >
-                      <Clock className="w-5 h-5" />
-                      Export This Day Only
-                    </motion.button>
-                  )}
-                  
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setShowExportModal(false)}
-                    className="w-full p-3 border-2 border-border-custom rounded-2xl text-secondary font-medium"
-                  >
-                    Cancel
-                  </motion.button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
     </div>
   );
 }
 
-function DraggableIdea({ idea, onDelete }: { idea: Idea; onDelete: (id: string) => void }) {
+// FIXED: Idea Card with proper delete button (doesn't trigger drag)
+function IdeaCard({ idea, onDelete }: { idea: Idea; onDelete: (id: string, e?: React.MouseEvent) => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: idea.id,
   });
@@ -939,50 +1050,59 @@ function DraggableIdea({ idea, onDelete }: { idea: Idea; onDelete: (id: string) 
 
   return (
     <motion.div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
       layout
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.8 }}
-      whileHover={{ scale: 1.02, y: -2 }}
-      className={`p-3 bg-white dark:bg-purple-900/40 border-l-4 ${idea.author === 'AY' ? 'border-pink-400' : 'border-purple-400'} rounded-2xl cursor-move shadow-md hover:shadow-xl transition-all ${isDragging ? 'opacity-50 rotate-3 scale-105' : ''}`}
+      className={`relative group ${isDragging ? 'opacity-30' : ''}`}
     >
-      <div className="flex justify-between items-start">
-        <div className="flex-1">
-          {idea.imageUrl && (
-            <img src={idea.imageUrl} alt="" className="w-full h-16 object-cover rounded-lg mb-2" />
-          )}
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`text-[10px] px-2 py-0.5 rounded-full text-white ${idea.author === 'AY' ? 'bg-pink-500' : 'bg-purple-500'}`}>
-              {idea.author}
-            </span>
-          </div>
-          <h3 className="font-bold text-primary text-sm">{idea.title}</h3>
-          <div className="flex items-center justify-between mt-1 text-xs text-secondary">
-            <span className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {idea.duration || 'TBD'}
-            </span>
-            {idea.budget && <span className="text-pink-500 font-bold">${idea.budget}</span>}
+      {/* Draggable area (everything except delete button) */}
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        className={`p-3 bg-white dark:bg-purple-900/40 border-l-4 ${idea.author === 'AY' ? 'border-pink-400' : 'border-purple-400'} rounded-2xl cursor-move shadow-md hover:shadow-xl transition-all ${isDragging ? 'rotate-3 scale-105' : ''}`}
+      >
+        <div className="flex justify-between items-start">
+          <div className="flex-1 pr-8"> {/* Padding for delete button space */}
+            {idea.imageUrl && (
+              <img src={idea.imageUrl} alt="" className="w-full h-16 object-cover rounded-lg mb-2" />
+            )}
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`text-[10px] px-2 py-0.5 rounded-full text-white ${idea.author === 'AY' ? 'bg-pink-500' : 'bg-purple-500'}`}>
+                {idea.author}
+              </span>
+            </div>
+            <h3 className="font-bold text-primary text-sm">{idea.title}</h3>
+            <div className="flex items-center justify-between mt-1 text-xs text-secondary">
+              <span className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {idea.duration || 'TBD'}
+              </span>
+              {idea.budget && <span className="text-pink-500 font-bold">${idea.budget}</span>}
+            </div>
           </div>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={(e) => { e.stopPropagation(); onDelete(idea.id); }}
-          className="ml-2 p-1 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full"
-        >
-          <Trash2 className="w-4 h-4" />
-        </motion.button>
       </div>
+
+      {/* FIXED: Delete button completely outside draggable area */}
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        onClick={(e) => onDelete(idea.id, e)}
+        onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
+        className="absolute top-2 right-2 p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full bg-white dark:bg-purple-800 shadow-sm z-10"
+        style={{ touchAction: 'none' }}
+      >
+        <Trash2 className="w-4 h-4" />
+      </motion.button>
     </motion.div>
   );
 }
 
-function DroppableDay({ day, index, ideas, isWeekend, hasActivities, onClick }: { 
+// Calendar Day Component
+function CalendarDay({ day, index, ideas, isWeekend, hasActivities, onClick }: { 
   day: Date; 
   index: number; 
   ideas: Idea[];
@@ -1009,7 +1129,7 @@ function DroppableDay({ day, index, ideas, isWeekend, hasActivities, onClick }: 
       <div className="space-y-1">
         {ideas.slice(0, 2).map(idea => (
           <div key={idea.id} className={`text-[10px] p-1 rounded truncate ${idea.author === 'AY' ? 'bg-pink-100 text-pink-700' : 'bg-purple-100 text-purple-700'}`}>
-            {idea.title}
+            {idea.title.substring(0, 15)}{idea.title.length > 15 ? '...' : ''}
           </div>
         ))}
         {ideas.length > 2 && (
@@ -1026,62 +1146,72 @@ function DroppableDay({ day, index, ideas, isWeekend, hasActivities, onClick }: 
   );
 }
 
-function DroppableTimeSlot({ time, index, ideas, isHour, onUnschedule }: {
+// Horizontal Timeline Row Component
+function TimelineRow({ time, nextTime, index, ideas, periodClass, onUnschedule }: {
   time: string;
+  nextTime: string;
   index: number;
   ideas: Idea[];
-  isHour: boolean;
-  onUnschedule: (id: string) => void;
+  periodClass: string;
+  onUnschedule: (id: string, e?: React.MouseEvent) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `time-${index}`,
   });
 
   const hour = parseInt(time.split(':')[0]);
-  const isNight = hour < 6 || hour >= 22;
-  const isMorning = hour >= 6 && hour < 12;
-  const isAfternoon = hour >= 12 && hour < 18;
-  const isEvening = hour >= 18 && hour < 22;
-
-  let timeEmoji = '🌙';
-  if (isMorning) timeEmoji = '🌅';
-  else if (isAfternoon) timeEmoji = '☀️';
-  else if (isEvening) timeEmoji = '🌆';
+  const isEvenHour = hour % 2 === 0;
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex items-center gap-3 p-2 rounded-xl border-2 transition-all ${isHour ? 'bg-pink-50/50 dark:bg-purple-900/20' : 'bg-transparent'} ${isOver ? 'border-pink-400 bg-pink-100 dark:bg-purple-800 scale-[1.02]' : 'border-transparent hover:border-pink-200'}`}
+      className={`flex items-stretch gap-2 p-2 rounded-xl border-2 transition-all min-h-[60px] ${periodClass} ${isOver ? 'border-pink-400 bg-pink-100 dark:bg-purple-800 scale-[1.02] shadow-lg' : 'border-transparent hover:border-pink-300'}`}
     >
-      <div className={`w-20 text-xs font-bold text-secondary flex items-center gap-1 ${isHour ? 'text-primary' : ''}`}>
-        {isHour && <span>{timeEmoji}</span>}
-        {time}
+      {/* Time label */}
+      <div className="w-16 flex flex-col justify-center items-center text-xs font-bold text-secondary border-r border-border-custom pr-2">
+        <span className={isEvenHour ? 'text-primary text-sm' : ''}>{time}</span>
+        <span className="text-[10px] opacity-60">to</span>
+        <span className="text-[10px] opacity-60">{nextTime}</span>
       </div>
-      <div className="flex-1 flex gap-2">
+
+      {/* Activity slots */}
+      <div className="flex-1 flex gap-2 items-center">
+        {ideas.length === 0 && isOver && (
+          <div className="flex-1 h-12 rounded-lg border-2 border-dashed border-pink-400 flex items-center justify-center text-xs text-pink-500 font-medium animate-pulse">
+            Drop here! ✨
+          </div>
+        )}
+        
         {ideas.map(idea => (
           <motion.div
             key={idea.id}
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            className={`flex-1 p-2 rounded-lg text-xs ${idea.author === 'AY' ? 'bg-pink-100 border-pink-300' : 'bg-purple-100 border-purple-300'} border-2 shadow-sm flex justify-between items-center`}
+            initial={{ scale: 0, x: -20 }}
+            animate={{ scale: 1, x: 0 }}
+            className={`flex-1 h-12 rounded-lg px-3 flex items-center justify-between shadow-sm ${idea.author === 'AY' ? 'bg-pink-200 border-pink-400' : 'bg-purple-200 border-purple-400'} border-2`}
           >
-            <div>
-              <div className="font-bold text-primary">{idea.title}</div>
-              <div className="text-[10px] text-secondary">{idea.duration} • ${idea.budget}</div>
+            <div className="flex items-center gap-2 overflow-hidden">
+              <span className={`text-xs px-2 py-0.5 rounded-full text-white font-bold ${idea.author === 'AY' ? 'bg-pink-500' : 'bg-purple-500'}`}>
+                {idea.author}
+              </span>
+              <span className="font-bold text-primary text-sm truncate">{idea.title}</span>
             </div>
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => onUnschedule(idea.id)}
-              className="p-1 text-red-400 hover:bg-red-100 rounded-full"
-            >
-              <X className="w-3 h-3" />
-            </motion.button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-secondary whitespace-nowrap">{idea.startTime}-{idea.endTime}</span>
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={(e) => onUnschedule(idea.id, e)}
+                className="p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-full"
+              >
+                <Trash2 className="w-4 h-4" />
+              </motion.button>
+            </div>
           </motion.div>
         ))}
-        {ideas.length === 0 && isOver && (
-          <div className="flex-1 p-2 rounded-lg border-2 border-dashed border-pink-300 text-center text-xs text-pink-400">
-            Drop here! ✨
+
+        {ideas.length === 0 && !isOver && (
+          <div className="flex-1 h-8 rounded-lg border border-dashed border-border-custom flex items-center justify-center text-xs text-secondary opacity-40">
+            Empty slot
           </div>
         )}
       </div>
