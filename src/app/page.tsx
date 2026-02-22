@@ -276,18 +276,26 @@ export default function CouplePlanner() {
     await deleteIdeaFromDb(id);
   }, [user]);
 
+  // FIXED: This function now properly unschedules an idea
   const unscheduleIdea = useCallback(async (id: string) => {
-    if (!user) return;
+    console.log('Unscheduling idea:', id);
+    if (!user) {
+      console.log('No user, returning');
+      return;
+    }
     const idea = ideas.find(i => i.id === id);
+    console.log('Found idea:', idea);
     if (idea) {
-      const updated = { 
+      const updated: Idea = { 
         ...idea, 
         scheduledAt: null, 
         isScheduled: false, 
         startTime: undefined, 
         endTime: undefined 
       };
+      console.log('Saving updated idea:', updated);
       await saveIdea(updated);
+      console.log('Saved successfully');
     }
   }, [ideas, user]);
 
@@ -857,7 +865,7 @@ export default function CouplePlanner() {
                         <p className="text-sm text-secondary">{idea.description}</p>
                       </div>
 
-                      {/* Budget & Delete */}
+                      {/* Budget & Delete - FIXED */}
                       <div className="flex items-center gap-3">
                         {idea.budget && (
                           <span className="text-pink-500 font-bold">${idea.budget}</span>
@@ -865,7 +873,11 @@ export default function CouplePlanner() {
                         <motion.button
                           whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.9 }}
-                          onClick={() => unscheduleIdea(idea.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            unscheduleIdea(idea.id);
+                          }}
                           className="p-2 bg-red-100 dark:bg-red-900 text-red-500 rounded-full"
                         >
                           <Trash2 className="w-4 h-4" />
