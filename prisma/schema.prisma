@@ -1,0 +1,22 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Idea {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  duration    String?
+  category    String
+  budget      Float?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  scheduledAt DateTime?
+  isScheduled Boolean  @default(false)
+  color       String   @default("blue")
+}
