@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { ThemeProvider } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Our Dubai Adventure",
-  description: "Couple's trip planner",
+  title: "A + A Adventure",
+  description: "Our couple's trip planner",
 };
 
 export default function RootLayout({
@@ -12,9 +13,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="antialiased">
-        {children}
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased transition-colors duration-300">
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

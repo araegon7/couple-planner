@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -8,13 +9,10 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'soft-pink': '#fce7f3',
-        'soft-purple': '#f3e8ff',
-        'soft-blue': '#dbeafe',
-        'soft-peach': '#ffedd5',
-        'soft-mint': '#d1fae5',
-        'rose-gold': '#fecdd3',
-        'lavender': '#e9d5ff',
+        primary: 'var(--text-primary)',
+        secondary: 'var(--text-secondary)',
+        'card-bg': 'var(--card-bg)',
+        'border-custom': 'var(--border-color)',
       }
     },
   },
