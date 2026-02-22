@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { DndContext, DragEndEvent, useDraggable, useDroppable, DragOverlay, PointerSensor, useSensor, useSensors, DragStartEvent } from '@dnd-kit/core';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfYear, endOfYear, eachMonthOfInterval, getYear, setYear, setMonth, addMinutes, setHours, setMinutes, isSameMonth } from 'date-fns';
-import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload, Sparkles, Moon, Sun, ChevronLeft, ChevronRight, Trash2, Settings, Download, Users, Gamepad2, Volleyball, ShoppingBag, Drama, Dumbbell, BookOpen, Wine, TreePine, Landmark } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { DndContext, DragEndEvent, useDraggable, useDroppable, DragOverlay } from '@dnd-kit/core';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfYear, endOfYear, eachMonthOfInterval, getYear, setYear, setMonth, isSameMonth } from 'date-fns';
+import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload, Sparkles, Moon, Sun, ChevronLeft, ChevronRight, Trash2, Settings, Download, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, EMOJIS } from './providers';
 import * as XLSX from 'xlsx';
@@ -60,22 +60,14 @@ const AUTHOR_BG_COLORS = { AY: 'bg-pink-100', AK: 'bg-purple-100' };
 const AUTHOR_TEXT_COLORS = { AY: 'text-pink-700', AK: 'text-purple-700' };
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// Generate 30-minute time slots from 00:00 to 23:30
-const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
-  const hour = Math.floor(i / 2);
-  const minute = (i % 2) * 30;
-  return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-});
-
-// Get time period for coloring
-const getTimePeriod = (time: string): 'night' | 'morning' | 'afternoon' | 'evening' => {
-  const hour = parseInt(time.split(':')[0]);
-  if (hour < 6) return 'night';
-  if (hour < 12) return 'morning';
-  if (hour < 18) return 'afternoon';
-  if (hour < 22) return 'evening';
-  return 'night';
-};
+// Simple time options
+const TIME_OPTIONS = [
+  '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
+  '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
+  '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
+  '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30',
+  '22:00', '22:30', '23:00', '23:30'
+];
 
 export default function CouplePlanner() {
   const { theme, toggleTheme, author, toggleAuthor } = useTheme();
@@ -95,17 +87,6 @@ export default function CouplePlanner() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [tempBudget, setTempBudget] = useState('');
   const [randomEmoji, setRandomEmoji] = useState('✨');
-  const calendarRef = useRef<HTMLDivElement>(null);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-
-  // Custom sensor for better drag detection
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  );
 
   useEffect(() => {
     setRandomEmoji(EMOJIS[Math.floor(Math.random() * EMOJIS.length)]);
@@ -114,9 +95,6 @@ export default function CouplePlanner() {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  
-  const yearStart = startOfYear(currentDate);
-  const yearEnd = endOfYear(currentDate);
 
   const currentMonthBudget = monthlyBudgets.find(
     b => b.year === currentDate.getFullYear() && b.month === currentDate.getMonth()
@@ -137,17 +115,8 @@ export default function CouplePlanner() {
   const remainingBudget = totalBudget - spentThisMonth;
   const isOverBudget = remainingBudget < 0;
 
-  // Track mouse position for accurate drag overlay
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
-
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveDragId(event.active.id as string);
+  const handleDragStart = (id: string) => {
+    setActiveDragId(id);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -161,53 +130,11 @@ export default function CouplePlanner() {
       const dayIndex = parseInt(over.id.toString().replace('day-', ''));
       const date = days[dayIndex];
       
-      // If day modal is open, don't schedule to calendar, only to timeline
-      if (showDayModal && isSameDay(date, showDayModal)) {
-        return;
-      }
-      
       setIdeas(ideas.map(idea => 
         idea.id === active.id 
-          ? { ...idea, scheduledAt: date, isScheduled: true, author }
+          ? { ...idea, scheduledAt: date, isScheduled: true, author, startTime: '09:00', endTime: '11:00' }
           : idea
       ));
-    }
-    
-    // Dropping on timeline time slot
-    if (over.id.toString().startsWith('time-')) {
-      const timeIndex = parseInt(over.id.toString().replace('time-', ''));
-      const startTime = TIME_SLOTS[timeIndex];
-      
-      // Calculate end time based on duration
-      const draggedIdea = ideas.find(i => i.id === active.id);
-      let durationMinutes = 120; // default 2 hours
-      
-      if (draggedIdea?.duration) {
-        if (draggedIdea.duration.includes('1-2 hours')) durationMinutes = 90;
-        else if (draggedIdea.duration.includes('Half day')) durationMinutes = 240;
-        else if (draggedIdea.duration.includes('Full day')) durationMinutes = 480;
-        else if (draggedIdea.duration.includes('Evening')) durationMinutes = 180;
-      }
-      
-      const [startHour, startMin] = startTime.split(':').map(Number);
-      const endTotalMinutes = startHour * 60 + startMin + durationMinutes;
-      const endHour = Math.floor(endTotalMinutes / 60) % 24;
-      const endMin = endTotalMinutes % 60;
-      const endTime = `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`;
-      
-      setIdeas(ideas.map(idea => {
-        if (idea.id === active.id) {
-          return { 
-            ...idea, 
-            scheduledAt: showDayModal, 
-            isScheduled: true, 
-            author,
-            startTime,
-            endTime
-          };
-        }
-        return idea;
-      }));
     }
   };
 
@@ -241,20 +168,21 @@ export default function CouplePlanner() {
     setShowAddModal(false);
   };
 
-  // FIXED: Delete with stop propagation to prevent drag
-  const deleteIdea = useCallback((id: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    e?.preventDefault();
+  const deleteIdea = useCallback((id: string) => {
     setIdeas(prev => prev.filter(i => i.id !== id));
   }, []);
 
-  const unscheduleIdea = useCallback((id: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    e?.preventDefault();
+  const unscheduleIdea = useCallback((id: string) => {
     setIdeas(prev => prev.map(idea => 
       idea.id === id ? { ...idea, scheduledAt: null, isScheduled: false, startTime: undefined, endTime: undefined } : idea
     ));
   }, []);
+
+  const updateActivityTime = (ideaId: string, field: 'startTime' | 'endTime', value: string) => {
+    setIdeas(prev => prev.map(idea => 
+      idea.id === ideaId ? { ...idea, [field]: value } : idea
+    ));
+  };
 
   const pickRandom = () => {
     const available = ideas.filter(i => !i.isScheduled);
@@ -293,7 +221,6 @@ export default function CouplePlanner() {
     const exportData: any[] = [];
     
     if (type === 'month') {
-      // Get all scheduled activities for current month
       const monthActivities = ideas
         .filter(i => i.isScheduled && i.scheduledAt && isSameMonth(i.scheduledAt, currentDate))
         .sort((a, b) => {
@@ -307,7 +234,7 @@ export default function CouplePlanner() {
         exportData.push({
           'Date': idea.scheduledAt ? format(idea.scheduledAt, 'MMM dd, yyyy') : '',
           'Time': idea.startTime && idea.endTime ? `${idea.startTime} - ${idea.endTime}` : 'All day',
-          'Activity': idea.title.replace(/^[^\w\s]/, '').trim(), // Remove emoji prefix for cleaner look
+          'Activity': idea.title.replace(/^[^\w\s]/, '').trim(),
           'Category': CATEGORIES.find(c => c.id === idea.category)?.label || idea.category,
           'Budget (AED)': idea.budget || 0,
           'Planned By': idea.author,
@@ -315,7 +242,6 @@ export default function CouplePlanner() {
         });
       });
 
-      // Add summary row
       exportData.push({
         'Date': '',
         'Time': '',
@@ -451,9 +377,7 @@ export default function CouplePlanner() {
         </header>
 
         <DndContext 
-          sensors={sensors}
           onDragEnd={handleDragEnd}
-          onDragStart={handleDragStart}
         >
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             
@@ -509,7 +433,12 @@ export default function CouplePlanner() {
               <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
                 <AnimatePresence>
                   {filteredIdeas.map(idea => (
-                    <IdeaCard key={idea.id} idea={idea} onDelete={deleteIdea} />
+                    <SimpleIdeaCard 
+                      key={idea.id} 
+                      idea={idea} 
+                      onDelete={deleteIdea}
+                      onDragStart={() => handleDragStart(idea.id)}
+                    />
                   ))}
                 </AnimatePresence>
                 {filteredIdeas.length === 0 && (
@@ -527,7 +456,6 @@ export default function CouplePlanner() {
 
             {/* Section 2: Calendar */}
             <motion.div 
-              ref={calendarRef}
               initial={{ y: 50, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               className="lg:col-span-2 bg-card-bg backdrop-blur-md rounded-3xl shadow-xl p-5 border-2 border-border-custom"
@@ -550,7 +478,7 @@ export default function CouplePlanner() {
                     Export Month
                   </motion.button>
                   <span className="text-xs text-secondary bg-card-bg px-3 py-1 rounded-full border border-border-custom flex items-center">
-                    Click day to plan ⏰
+                    Drag ideas here ⏰
                   </span>
                 </div>
               </div>
@@ -568,7 +496,7 @@ export default function CouplePlanner() {
                   const hasActivities = dayIdeas.length > 0;
                   
                   return (
-                    <CalendarDay 
+                    <SimpleCalendarDay 
                       key={day.toISOString()} 
                       day={day} 
                       index={idx}
@@ -665,19 +593,10 @@ export default function CouplePlanner() {
             </motion.div>
           </div>
 
-          {/* FIXED: Drag overlay that follows cursor accurately */}
-          <DragOverlay dropAnimation={null}>
+          {/* Simple Drag Overlay */}
+          <DragOverlay>
             {activeIdea ? (
-              <div 
-                className="p-4 bg-white dark:bg-purple-800 border-2 border-pink-400 rounded-2xl shadow-2xl opacity-90 pointer-events-none"
-                style={{
-                  position: 'fixed',
-                  left: mousePosition.x - 60,
-                  top: mousePosition.y - 40,
-                  transform: 'translate(0, 0)',
-                  zIndex: 9999,
-                }}
-              >
+              <div className="p-4 bg-white dark:bg-purple-800 border-2 border-pink-400 rounded-2xl shadow-2xl opacity-90 rotate-3 pointer-events-none">
                 <p className="font-bold text-primary text-sm">{activeIdea.title}</p>
                 <p className="text-xs text-secondary">{activeIdea.duration}</p>
               </div>
@@ -685,7 +604,7 @@ export default function CouplePlanner() {
           </DragOverlay>
         </DndContext>
 
-        {/* Day Schedule Modal with Horizontal Timeline */}
+        {/* Day Schedule Modal with Simple Time Dropdowns */}
         <AnimatePresence>
           {showDayModal && (
             <motion.div 
@@ -699,7 +618,7 @@ export default function CouplePlanner() {
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.8, opacity: 0 }}
-                className="bg-card-bg rounded-3xl p-6 w-full max-w-5xl shadow-2xl border-4 border-border-custom max-h-[90vh] overflow-hidden flex flex-col"
+                className="bg-card-bg rounded-3xl p-6 w-full max-w-2xl shadow-2xl border-4 border-border-custom max-h-[90vh] overflow-y-auto"
                 onClick={e => e.stopPropagation()}
               >
                 <div className="flex justify-between items-center mb-4">
@@ -707,7 +626,7 @@ export default function CouplePlanner() {
                     <h3 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
                       {format(showDayModal, 'EEEE, MMMM do')}
                     </h3>
-                    <p className="text-sm text-secondary">Drag ideas to timeline to schedule ⏰ (30-min snap)</p>
+                    <p className="text-sm text-secondary">Click time dropdowns to change schedule ⏰</p>
                   </div>
                   <div className="flex gap-2">
                     <motion.button 
@@ -729,76 +648,97 @@ export default function CouplePlanner() {
                   </div>
                 </div>
 
-                {/* Horizontal Timeline */}
-                <DndContext 
-                  sensors={sensors}
-                  onDragEnd={handleDragEnd}
-                  onDragStart={handleDragStart}
-                >
-                  <div className="flex-1 overflow-y-auto pr-2 space-y-2">
-                    {/* Time period labels */}
-                    <div className="flex gap-1 text-xs font-bold text-secondary mb-2">
-                      <div className="w-20" /> {/* Spacer for time column */}
-                      <div className="flex-1 flex">
-                        <div className="flex-1 text-center bg-yellow-100 dark:bg-yellow-900/30 rounded-lg py-1 text-yellow-700 dark:text-yellow-300">🌙 Night (00-06)</div>
-                        <div className="flex-1 text-center bg-orange-100 dark:bg-orange-900/30 rounded-lg py-1 text-orange-700 dark:text-orange-300">🌅 Morning (06-12)</div>
-                        <div className="flex-1 text-center bg-blue-100 dark:bg-blue-900/30 rounded-lg py-1 text-blue-700 dark:text-blue-300">☀️ Afternoon (12-18)</div>
-                        <div className="flex-1 text-center bg-purple-100 dark:bg-purple-900/30 rounded-lg py-1 text-purple-700 dark:text-purple-300">🌆 Evening (18-22)</div>
-                        <div className="flex-1 text-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg py-1 text-indigo-700 dark:text-indigo-300">🌙 Night (22-24)</div>
+                {/* Activities List with Time Pickers */}
+                <div className="space-y-3">
+                  {ideas
+                    .filter(i => i.scheduledAt && isSameDay(i.scheduledAt, showDayModal))
+                    .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'))
+                    .map(idea => (
+                    <motion.div 
+                      key={idea.id}
+                      initial={{ x: -20, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row gap-3 items-start sm:items-center ${idea.author === 'AY' ? 'bg-pink-50 border-pink-200' : 'bg-purple-50 border-purple-200'}`}
+                    >
+                      {/* Time Pickers */}
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={idea.startTime || '09:00'}
+                          onChange={(e) => updateActivityTime(idea.id, 'startTime', e.target.value)}
+                          className="p-2 border-2 border-border-custom rounded-lg text-sm bg-transparent text-primary focus:border-pink-400"
+                        >
+                          {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <span className="text-secondary">to</span>
+                        <select
+                          value={idea.endTime || '11:00'}
+                          onChange={(e) => updateActivityTime(idea.id, 'endTime', e.target.value)}
+                          className="p-2 border-2 border-border-custom rounded-lg text-sm bg-transparent text-primary focus:border-pink-400"
+                        >
+                          {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
                       </div>
-                    </div>
 
-                    {/* Timeline rows */}
-                    {TIME_SLOTS.filter((_, i) => i % 2 === 0).map((time, idx) => {
-                      const actualIndex = idx * 2;
-                      const nextTime = TIME_SLOTS[actualIndex + 1];
-                      const hour = parseInt(time.split(':')[0]);
-                      
-                      // Get activities for this hour slot
-                      const slotIdeas = ideas.filter(i => 
-                        i.scheduledAt && 
-                        isSameDay(i.scheduledAt, showDayModal) && 
-                        i.startTime &&
-                        parseInt(i.startTime.split(':')[0]) === hour
-                      );
-
-                      const period = getTimePeriod(time);
-                      const periodColors = {
-                        night: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800',
-                        morning: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800',
-                        afternoon: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800',
-                        evening: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800',
-                      };
-
-                      return (
-                        <TimelineRow
-                          key={time}
-                          time={time}
-                          nextTime={nextTime}
-                          index={actualIndex}
-                          ideas={slotIdeas}
-                          periodClass={periodColors[period]}
-                          onUnschedule={unscheduleIdea}
-                        />
-                      );
-                    })}
-                  </div>
-                </DndContext>
-
-                {/* Current activities summary */}
-                <div className="mt-4 p-4 bg-pink-50 dark:bg-purple-900/20 rounded-2xl border border-border-custom">
-                  <h4 className="font-bold text-primary mb-2">Today's Activities</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {ideas
-                      .filter(i => i.scheduledAt && isSameDay(i.scheduledAt, showDayModal))
-                      .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'))
-                      .map(idea => (
-                        <div key={idea.id} className={`px-3 py-1 rounded-full text-xs font-medium ${AUTHOR_BG_COLORS[idea.author]} ${AUTHOR_TEXT_COLORS[idea.author]}`}>
-                          {idea.startTime} {idea.title.substring(0, 20)}{idea.title.length > 20 ? '...' : ''}
+                      {/* Activity Info */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs px-2 py-0.5 rounded-full text-white ${idea.author === 'AY' ? 'bg-pink-500' : 'bg-purple-500'}`}>
+                            {idea.author}
+                          </span>
+                          <span className="text-xs text-secondary uppercase">{CATEGORIES.find(c => c.id === idea.category)?.label}</span>
                         </div>
-                      ))}
-                    {ideas.filter(i => i.scheduledAt && isSameDay(i.scheduledAt, showDayModal)).length === 0 && (
-                      <span className="text-secondary text-sm">No activities scheduled yet. Drag from &quot;Our Ideas&quot; to the timeline above! ✨</span>
+                        <h4 className="font-bold text-primary">{idea.title}</h4>
+                        <p className="text-sm text-secondary">{idea.description}</p>
+                      </div>
+
+                      {/* Budget & Delete */}
+                      <div className="flex items-center gap-3">
+                        {idea.budget && (
+                          <span className="text-pink-500 font-bold">${idea.budget}</span>
+                        )}
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => unscheduleIdea(idea.id)}
+                          className="p-2 bg-red-100 dark:bg-red-900 text-red-500 rounded-full"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  ))}
+                  
+                  {ideas.filter(i => i.scheduledAt && isSameDay(i.scheduledAt, showDayModal)).length === 0 && (
+                    <div className="text-center py-8 text-secondary">
+                      <span className="text-4xl mb-2 block">🌸</span>
+                      <p>No plans yet! Drag ideas from the left to the calendar first 💕</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Add from Unscheduled */}
+                <div className="mt-6 pt-6 border-t border-border-custom">
+                  <h4 className="font-bold text-primary mb-3">Quick Add to This Day</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {ideas.filter(i => !i.isScheduled).slice(0, 5).map(idea => (
+                      <motion.button
+                        key={idea.id}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          setIdeas(prev => prev.map(i => 
+                            i.id === idea.id 
+                              ? { ...i, scheduledAt: showDayModal, isScheduled: true, startTime: '09:00', endTime: '11:00' }
+                              : i
+                          ));
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-medium ${idea.author === 'AY' ? 'bg-pink-100 text-pink-700' : 'bg-purple-100 text-purple-700'} border border-border-custom`}
+                      >
+                        {idea.title.substring(0, 20)}{idea.title.length > 20 ? '...' : ''}
+                      </motion.button>
+                    ))}
+                    {ideas.filter(i => !i.isScheduled).length === 0 && (
+                      <span className="text-sm text-secondary">No unscheduled ideas left! ✨</span>
                     )}
                   </div>
                 </div>
@@ -1038,15 +978,28 @@ export default function CouplePlanner() {
   );
 }
 
-// FIXED: Idea Card with proper delete button (doesn't trigger drag)
-function IdeaCard({ idea, onDelete }: { idea: Idea; onDelete: (id: string, e?: React.MouseEvent) => void }) {
+// SIMPLIFIED: Idea Card - just drag handle on the card itself
+function SimpleIdeaCard({ idea, onDelete, onDragStart }: { 
+  idea: Idea; 
+  onDelete: (id: string) => void;
+  onDragStart: () => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: idea.id,
   });
 
+  // Apply transform manually for smoother dragging
   const style = transform ? {
-    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0) rotate(3deg)`,
+    zIndex: 1000,
   } : undefined;
+
+  // Call parent's drag start handler
+  useEffect(() => {
+    if (isDragging) {
+      onDragStart();
+    }
+  }, [isDragging, onDragStart]);
 
   return (
     <motion.div
@@ -1054,18 +1007,18 @@ function IdeaCard({ idea, onDelete }: { idea: Idea; onDelete: (id: string, e?: R
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.8 }}
-      className={`relative group ${isDragging ? 'opacity-30' : ''}`}
+      className={`relative ${isDragging ? 'opacity-50' : ''}`}
     >
-      {/* Draggable area (everything except delete button) */}
+      {/* Main card with drag handle */}
       <div
         ref={setNodeRef}
         style={style}
         {...attributes}
         {...listeners}
-        className={`p-3 bg-white dark:bg-purple-900/40 border-l-4 ${idea.author === 'AY' ? 'border-pink-400' : 'border-purple-400'} rounded-2xl cursor-move shadow-md hover:shadow-xl transition-all ${isDragging ? 'rotate-3 scale-105' : ''}`}
+        className={`p-3 bg-white dark:bg-purple-900/40 border-l-4 ${idea.author === 'AY' ? 'border-pink-400' : 'border-purple-400'} rounded-2xl cursor-grab active:cursor-grabbing shadow-md hover:shadow-xl transition-all`}
       >
         <div className="flex justify-between items-start">
-          <div className="flex-1 pr-8"> {/* Padding for delete button space */}
+          <div className="flex-1 pr-8">
             {idea.imageUrl && (
               <img src={idea.imageUrl} alt="" className="w-full h-16 object-cover rounded-lg mb-2" />
             )}
@@ -1086,23 +1039,19 @@ function IdeaCard({ idea, onDelete }: { idea: Idea; onDelete: (id: string, e?: R
         </div>
       </div>
 
-      {/* FIXED: Delete button completely outside draggable area */}
-      <motion.button
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-        onClick={(e) => onDelete(idea.id, e)}
-        onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
+      {/* Delete button - completely separate, no drag handlers */}
+      <button
+        onClick={() => onDelete(idea.id)}
         className="absolute top-2 right-2 p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full bg-white dark:bg-purple-800 shadow-sm z-10"
-        style={{ touchAction: 'none' }}
       >
         <Trash2 className="w-4 h-4" />
-      </motion.button>
+      </button>
     </motion.div>
   );
 }
 
-// Calendar Day Component
-function CalendarDay({ day, index, ideas, isWeekend, hasActivities, onClick }: { 
+// Simplified Calendar Day
+function SimpleCalendarDay({ day, index, ideas, isWeekend, hasActivities, onClick }: { 
   day: Date; 
   index: number; 
   ideas: Idea[];
@@ -1123,7 +1072,7 @@ function CalendarDay({ day, index, ideas, isWeekend, hasActivities, onClick }: {
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       onClick={onClick}
-      className={`min-h-[80px] p-2 rounded-xl border-2 cursor-pointer transition-all ${isWeekend ? 'bg-pink-50/30 dark:bg-purple-900/20' : 'bg-white/40 dark:bg-purple-900/10'} ${isOver ? 'border-pink-400 bg-pink-100 dark:bg-purple-800 scale-105 shadow-lg' : hasActivities ? 'border-pink-300 dark:border-purple-500' : 'border-border-custom hover:border-pink-300'}`}
+      className={`min-h-[80px] p-2 rounded-xl border-2 cursor-pointer transition-all ${isWeekend ? 'bg-pink-50/30 dark:bg-purple-900/20' : 'bg-white/40 dark:bg-purple-900/10'} ${isOver ? 'border-pink-400 bg-pink-100 dark:bg-purple-800 scale-105 shadow-lg ring-2 ring-pink-400' : hasActivities ? 'border-pink-300 dark:border-purple-500' : 'border-border-custom hover:border-pink-300'}`}
     >
       <div className={`text-sm font-bold mb-1 ${isWeekend ? 'text-pink-500' : 'text-primary'}`}>{format(day, 'd')}</div>
       <div className="space-y-1">
@@ -1133,7 +1082,7 @@ function CalendarDay({ day, index, ideas, isWeekend, hasActivities, onClick }: {
           </div>
         ))}
         {ideas.length > 2 && (
-          <div className="text-[10px] text-center text-pink-500 font-bold">+{ideas.length - 2} more</div>
+          <div className="text-[10px] text-center text-pink-500 font-bold">+{ideas.length - 2}</div>
         )}
         {(ayCount > 0 || akCount > 0) && (
           <div className="flex gap-1 mt-1">
@@ -1143,78 +1092,5 @@ function CalendarDay({ day, index, ideas, isWeekend, hasActivities, onClick }: {
         )}
       </div>
     </motion.div>
-  );
-}
-
-// Horizontal Timeline Row Component
-function TimelineRow({ time, nextTime, index, ideas, periodClass, onUnschedule }: {
-  time: string;
-  nextTime: string;
-  index: number;
-  ideas: Idea[];
-  periodClass: string;
-  onUnschedule: (id: string, e?: React.MouseEvent) => void;
-}) {
-  const { isOver, setNodeRef } = useDroppable({
-    id: `time-${index}`,
-  });
-
-  const hour = parseInt(time.split(':')[0]);
-  const isEvenHour = hour % 2 === 0;
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`flex items-stretch gap-2 p-2 rounded-xl border-2 transition-all min-h-[60px] ${periodClass} ${isOver ? 'border-pink-400 bg-pink-100 dark:bg-purple-800 scale-[1.02] shadow-lg' : 'border-transparent hover:border-pink-300'}`}
-    >
-      {/* Time label */}
-      <div className="w-16 flex flex-col justify-center items-center text-xs font-bold text-secondary border-r border-border-custom pr-2">
-        <span className={isEvenHour ? 'text-primary text-sm' : ''}>{time}</span>
-        <span className="text-[10px] opacity-60">to</span>
-        <span className="text-[10px] opacity-60">{nextTime}</span>
-      </div>
-
-      {/* Activity slots */}
-      <div className="flex-1 flex gap-2 items-center">
-        {ideas.length === 0 && isOver && (
-          <div className="flex-1 h-12 rounded-lg border-2 border-dashed border-pink-400 flex items-center justify-center text-xs text-pink-500 font-medium animate-pulse">
-            Drop here! ✨
-          </div>
-        )}
-        
-        {ideas.map(idea => (
-          <motion.div
-            key={idea.id}
-            initial={{ scale: 0, x: -20 }}
-            animate={{ scale: 1, x: 0 }}
-            className={`flex-1 h-12 rounded-lg px-3 flex items-center justify-between shadow-sm ${idea.author === 'AY' ? 'bg-pink-200 border-pink-400' : 'bg-purple-200 border-purple-400'} border-2`}
-          >
-            <div className="flex items-center gap-2 overflow-hidden">
-              <span className={`text-xs px-2 py-0.5 rounded-full text-white font-bold ${idea.author === 'AY' ? 'bg-pink-500' : 'bg-purple-500'}`}>
-                {idea.author}
-              </span>
-              <span className="font-bold text-primary text-sm truncate">{idea.title}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-secondary whitespace-nowrap">{idea.startTime}-{idea.endTime}</span>
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={(e) => onUnschedule(idea.id, e)}
-                className="p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-full"
-              >
-                <Trash2 className="w-4 h-4" />
-              </motion.button>
-            </div>
-          </motion.div>
-        ))}
-
-        {ideas.length === 0 && !isOver && (
-          <div className="flex-1 h-8 rounded-lg border border-dashed border-border-custom flex items-center justify-center text-xs text-secondary opacity-40">
-            Empty slot
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
