@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
-import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload } from 'lucide-react';
+import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload, Heart, Sparkles } from 'lucide-react';
 
 interface Idea {
   id: string;
@@ -19,17 +19,26 @@ interface Idea {
 }
 
 const INITIAL_IDEAS: Idea[] = [
-  { id: '1', title: 'Desert Safari', description: 'Dune bashing and dinner', duration: '6 hours', category: 'adventure', budget: 300, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'orange' },
-  { id: '2', title: 'Burj Khalifa', description: 'Sunset at the top', duration: '3 hours', category: 'sightseeing', budget: 150, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'blue' },
-  { id: '3', title: 'Beach Day', description: 'JBR Beach relaxation', duration: 'full day', category: 'chill', budget: 50, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'cyan' },
+  { id: '1', title: '🌅 Desert Safari', description: 'Dune bashing and dinner under the stars', duration: '6 hours', category: 'adventure', budget: 300, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'orange' },
+  { id: '2', title: '🏙️ Burj Khalifa', description: 'Sunset at the top together', duration: '3 hours', category: 'sightseeing', budget: 150, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'blue' },
+  { id: '3', title: '🏖️ Beach Day', description: 'JBR Beach relaxation & swimming', duration: 'full day', category: 'chill', budget: 50, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'cyan' },
 ];
 
 const CATEGORIES = ['all', 'food', 'adventure', 'chill', 'sightseeing', 'romantic'];
-const COLORS = ['red', 'orange', 'amber', 'green', 'emerald', 'teal', 'blue', 'indigo', 'purple', 'pink'];
+const COLORS = ['rose', 'pink', 'purple', 'blue', 'cyan', 'teal', 'emerald', 'amber', 'orange', 'red'];
+
+const CATEGORY_EMOJIS: { [key: string]: string } = {
+  all: '✨',
+  food: '🍽️',
+  adventure: '🎢',
+  chill: '😌',
+  sightseeing: '📸',
+  romantic: '💕'
+};
 
 export default function CouplePlanner() {
   const [ideas, setIdeas] = useState<Idea[]>(INITIAL_IDEAS);
-  const [currentMonth, setCurrentMonth] = useState(new Date(2024, 5, 1));
+  const [currentMonth] = useState(new Date(2024, 5, 1));
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRandomModal, setShowRandomModal] = useState(false);
@@ -83,7 +92,7 @@ export default function CouplePlanner() {
     if (!newIdea.title) return;
     const idea: Idea = {
       id: Date.now().toString(),
-      title: newIdea.title,
+      title: newIdea.title.startsWith('📍') || newIdea.title.startsWith('✨') || newIdea.title.startsWith('🎉') ? newIdea.title : `✨ ${newIdea.title}`,
       description: newIdea.description,
       duration: newIdea.duration,
       category: newIdea.category,
@@ -115,94 +124,117 @@ export default function CouplePlanner() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-purple-50 to-indigo-50 p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto">
+        {/* Cute Header */}
         <header className="mb-8 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-rose-400 to-purple-600 bg-clip-text text-transparent mb-2">
-            Our Dubai Adventure 💕
+          <div className="inline-flex items-center gap-2 bg-white/70 backdrop-blur-md px-6 py-2 rounded-full shadow-lg mb-4 border border-pink-200">
+            <Sparkles className="w-5 h-5 text-pink-500" />
+            <span className="text-pink-600 font-medium">Our Special Trip</span>
+            <Sparkles className="w-5 h-5 text-pink-500" />
+          </div>
+          <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 bg-clip-text text-transparent mb-3 drop-shadow-sm">
+            Dubai Adventure 💕
           </h1>
-          <p className="text-gray-600 mb-4">June 2024 • 3 weeks of memories waiting to happen</p>
+          <p className="text-purple-600 text-lg mb-4 font-medium">June 2024 • Making memories together</p>
           
-          <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm px-6 py-3 rounded-full shadow-lg border border-white/50">
-            <DollarSign className="w-5 h-5 text-green-500" />
-            <span className="font-semibold text-gray-700">Total Budget:</span>
-            <span className="text-2xl font-bold text-green-600">${totalBudget}</span>
-            <span className="text-gray-400 text-sm">/ ${ideas.reduce((sum, i) => sum + (i.budget || 0), 0)} planned</span>
+          {/* Cute Budget Card */}
+          <div className="inline-flex items-center gap-3 bg-white/80 backdrop-blur-md px-8 py-4 rounded-2xl shadow-xl border-2 border-pink-200">
+            <div className="bg-pink-100 p-2 rounded-full">
+              <DollarSign className="w-6 h-6 text-pink-600" />
+            </div>
+            <div className="text-left">
+              <span className="text-gray-500 text-sm font-medium">Our Budget</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold text-pink-600">${totalBudget}</span>
+                <span className="text-gray-400 text-sm">/ ${ideas.reduce((sum, i) => sum + (i.budget || 0), 0)} planned</span>
+              </div>
+            </div>
+            <Heart className="w-6 h-6 text-pink-400 ml-2 fill-pink-200" />
           </div>
         </header>
 
         <DndContext onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
+            {/* Ideas Section */}
             <div className="lg:col-span-1 space-y-4">
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-white/50">
-                <div className="flex items-center justify-between mb-4">
+              <div className="bg-white/80 backdrop-blur-md rounded-3xl shadow-xl p-6 border border-pink-100">
+                <div className="flex items-center justify-between mb-5">
                   <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                    <Lightbulb className="w-6 h-6 text-yellow-500" />
-                    Ideas
+                    <span className="bg-yellow-100 p-2 rounded-xl">💡</span>
+                    <span className="bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">Our Ideas</span>
                   </h2>
                   <div className="flex gap-2">
                     <button 
                       onClick={pickRandom}
-                      className="bg-gradient-to-r from-purple-400 to-pink-500 text-white p-2 rounded-full hover:shadow-lg transition-all hover:scale-105"
+                      className="bg-gradient-to-r from-purple-400 to-pink-400 text-white p-3 rounded-2xl hover:shadow-lg transition-all hover:scale-110 shadow-md"
                       title="Surprise me!"
                     >
                       <Shuffle className="w-5 h-5" />
                     </button>
                     <button 
                       onClick={() => setShowAddModal(true)}
-                      className="bg-gradient-to-r from-rose-400 to-purple-500 text-white p-2 rounded-full hover:shadow-lg transition-all hover:scale-105"
+                      className="bg-gradient-to-r from-pink-400 to-rose-400 text-white p-3 rounded-2xl hover:shadow-lg transition-all hover:scale-110 shadow-md"
                     >
                       <Plus className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mb-4">
+                {/* Category Pills */}
+                <div className="flex flex-wrap gap-2 mb-5">
                   {CATEGORIES.map(cat => (
                     <button
                       key={cat}
                       onClick={() => setSelectedCategory(cat)}
-                      className={`px-3 py-1 rounded-full text-sm capitalize transition-all ${
+                      className={`px-4 py-2 rounded-full text-sm font-medium transition-all transform hover:scale-105 ${
                         selectedCategory === cat 
-                          ? 'bg-purple-500 text-white' 
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          ? 'bg-gradient-to-r from-pink-400 to-purple-400 text-white shadow-md' 
+                          : 'bg-pink-50 text-pink-600 hover:bg-pink-100 border border-pink-200'
                       }`}
                     >
-                      {cat}
+                      {CATEGORY_EMOJIS[cat]} {cat}
                     </button>
                   ))}
                 </div>
 
-                <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                {/* Ideas List */}
+                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
                   {filteredIdeas.map(idea => (
                     <DraggableIdea key={idea.id} idea={idea} />
                   ))}
                   {filteredIdeas.length === 0 && (
-                    <p className="text-gray-400 text-center py-8">No ideas yet! Add some ✨</p>
+                    <div className="text-center py-8 bg-pink-50/50 rounded-2xl border-2 border-dashed border-pink-200">
+                      <span className="text-4xl mb-2 block">✨</span>
+                      <p className="text-pink-400 font-medium">No ideas yet! Add some cute ones 💕</p>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
 
+            {/* Calendar Section */}
             <div className="lg:col-span-2">
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-white/50">
+              <div className="bg-white/80 backdrop-blur-md rounded-3xl shadow-xl p-6 border border-purple-100">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                    <Calendar className="w-6 h-6 text-purple-500" />
-                    June 2024
+                    <span className="bg-purple-100 p-2 rounded-xl">📅</span>
+                    <span className="bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent">June 2024</span>
                   </h2>
+                  <span className="text-sm text-purple-400 font-medium bg-purple-50 px-4 py-2 rounded-full">Drag ideas here 💕</span>
                 </div>
 
                 <div className="grid grid-cols-7 gap-2">
                   {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                    <div key={day} className="text-center text-sm font-semibold text-gray-500 py-2">
+                    <div key={day} className="text-center text-sm font-bold text-purple-400 py-3 bg-purple-50/50 rounded-xl">
                       {day}
                     </div>
                   ))}
                   
                   {days.map((day, idx) => {
                     const dayIdeas = ideas.filter(i => i.scheduledAt && isSameDay(i.scheduledAt, day));
+                    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                     return (
                       <DroppableDay 
                         key={day.toISOString()} 
@@ -210,6 +242,7 @@ export default function CouplePlanner() {
                         index={idx}
                         ideas={dayIdeas}
                         onUnschedule={unscheduleIdea}
+                        isWeekend={isWeekend}
                       />
                     );
                   })}
@@ -219,32 +252,39 @@ export default function CouplePlanner() {
           </div>
         </DndContext>
 
+        {/* Add Idea Modal */}
         {showAddModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold">New Idea 💡</h3>
-                <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border-4 border-pink-200 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-5">
+                <h3 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent flex items-center gap-2">
+                  <Sparkles className="w-6 h-6 text-pink-500" />
+                  New Idea 💡
+                </h3>
+                <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-pink-500 transition-colors bg-gray-100 p-2 rounded-full hover:bg-pink-100">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               
               <div className="space-y-4">
-                <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:border-purple-400 transition-colors">
+                {/* Image Upload */}
+                <div className="border-3 border-dashed border-pink-300 rounded-2xl p-6 text-center hover:border-pink-500 hover:bg-pink-50/50 transition-all cursor-pointer group">
                   {previewImage ? (
                     <div className="relative">
-                      <img src={previewImage} alt="Preview" className="w-full h-32 object-cover rounded-lg" />
+                      <img src={previewImage} alt="Preview" className="w-full h-40 object-cover rounded-xl shadow-md" />
                       <button 
                         onClick={() => setPreviewImage(null)}
-                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full"
+                        className="absolute top-2 right-2 bg-red-400 text-white p-2 rounded-full hover:bg-red-500 shadow-lg"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
                   ) : (
-                    <label className="cursor-pointer block">
-                      <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
-                      <span className="text-sm text-gray-500">Click to upload photo</span>
+                    <label className="cursor-pointer block group-hover:scale-105 transition-transform">
+                      <div className="bg-pink-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-pink-200 transition-colors">
+                        <Upload className="w-8 h-8 text-pink-500" />
+                      </div>
+                      <span className="text-pink-600 font-medium">Add a cute photo 📸</span>
                       <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                     </label>
                   )}
@@ -252,81 +292,82 @@ export default function CouplePlanner() {
 
                 <input
                   type="text"
-                  placeholder="What do you want to do?"
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="What should we do together? 💕"
+                  className="w-full p-4 border-2 border-pink-200 rounded-2xl focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-pink-100 transition-all text-gray-700 placeholder-gray-400"
                   value={newIdea.title}
                   onChange={e => setNewIdea({...newIdea, title: e.target.value})}
                 />
                 <textarea
-                  placeholder="Details..."
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 h-24 resize-none"
+                  placeholder="Tell me more about it... ✨"
+                  className="w-full p-4 border-2 border-pink-200 rounded-2xl focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-pink-100 transition-all h-28 resize-none text-gray-700 placeholder-gray-400"
                   value={newIdea.description}
                   onChange={e => setNewIdea({...newIdea, description: e.target.value})}
                 />
                 <div className="grid grid-cols-2 gap-3">
                   <select
-                    className="p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="p-4 border-2 border-purple-200 rounded-2xl focus:outline-none focus:border-purple-400 focus:ring-4 focus:ring-purple-100 transition-all bg-white text-gray-700"
                     value={newIdea.duration}
                     onChange={e => setNewIdea({...newIdea, duration: e.target.value})}
                   >
-                    <option value="">Duration</option>
-                    <option value="1-2 hours">1-2 hours</option>
-                    <option value="Half day">Half day</option>
-                    <option value="Full day">Full day</option>
-                    <option value="Evening">Evening</option>
+                    <option value="">⏰ Duration</option>
+                    <option value="1-2 hours">✨ 1-2 hours</option>
+                    <option value="Half day">🌅 Half day</option>
+                    <option value="Full day">☀️ Full day</option>
+                    <option value="Evening">🌙 Evening</option>
                   </select>
                   <select
-                    className="p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="p-4 border-2 border-purple-200 rounded-2xl focus:outline-none focus:border-purple-400 focus:ring-4 focus:ring-purple-100 transition-all bg-white text-gray-700"
                     value={newIdea.category}
                     onChange={e => setNewIdea({...newIdea, category: e.target.value})}
                   >
                     {CATEGORIES.filter(c => c !== 'all').map(c => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={c} value={c}>{CATEGORY_EMOJIS[c]} {c}</option>
                     ))}
                   </select>
                 </div>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <DollarSign className="absolute left-4 top-4 w-5 h-5 text-pink-400" />
                   <input
                     type="number"
-                    placeholder="Budget (AED)"
-                    className="w-full p-3 pl-10 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="Budget (AED) 💰"
+                    className="w-full p-4 pl-12 border-2 border-pink-200 rounded-2xl focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-pink-100 transition-all text-gray-700"
                     value={newIdea.budget}
                     onChange={e => setNewIdea({...newIdea, budget: e.target.value})}
                   />
                 </div>
                 <button
                   onClick={addIdea}
-                  className="w-full p-3 bg-gradient-to-r from-rose-400 to-purple-500 text-white rounded-xl hover:shadow-lg transition-all font-semibold"
+                  className="w-full p-4 bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400 text-white rounded-2xl hover:shadow-xl transition-all font-bold text-lg transform hover:scale-[1.02] shadow-lg"
                 >
-                  Add Idea
+                  Add to Our List 💕
                 </button>
               </div>
             </div>
           </div>
         )}
 
+        {/* Random Picker Modal */}
         {showRandomModal && randomPick && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl text-center">
-              <div className="text-4xl mb-4">🎲</div>
-              <h3 className="text-2xl font-bold mb-2">We should do...</h3>
-              <div className={`p-6 rounded-xl bg-${randomPick.color}-50 border-2 border-${randomPick.color}-200 mb-4`}>
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl border-4 border-purple-200 text-center transform animate-bounce-in">
+              <div className="text-6xl mb-4 animate-pulse">🎲</div>
+              <h3 className="text-2xl font-bold mb-2 text-purple-600">The universe says...</h3>
+              <div className={`p-6 rounded-2xl bg-gradient-to-br from-${randomPick.color}-50 to-${randomPick.color}-100 border-2 border-${randomPick.color}-200 mb-6 shadow-inner`}>
                 {randomPick.imageUrl && (
-                  <img src={randomPick.imageUrl} alt="" className="w-full h-32 object-cover rounded-lg mb-3" />
+                  <img src={randomPick.imageUrl} alt="" className="w-full h-32 object-cover rounded-xl mb-4 shadow-md" />
                 )}
-                <h4 className="text-xl font-bold text-gray-800">{randomPick.title}</h4>
-                <p className="text-gray-600 mt-1">{randomPick.description}</p>
-                <div className="flex justify-center gap-4 mt-3 text-sm text-gray-500">
-                  <span>{randomPick.duration}</span>
-                  {randomPick.budget && <span>${randomPick.budget}</span>}
+                <h4 className="text-xl font-bold text-gray-800 mb-2">{randomPick.title}</h4>
+                <p className="text-gray-600 mb-3">{randomPick.description}</p>
+                <div className="flex justify-center gap-4 text-sm text-gray-500 bg-white/50 py-2 rounded-full">
+                  <span>⏰ {randomPick.duration}</span>
+                  {randomPick.budget && <span>💰 ${randomPick.budget}</span>}
                 </div>
               </div>
               <button
                 onClick={() => setShowRandomModal(false)}
-                className="px-6 py-2 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 transition-colors"
+                className="px-8 py-3 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-full hover:shadow-lg transition-all font-bold"
               >
-                Cool!
+                Yay! Let's do it! 🎉
               </button>
             </div>
           </div>
@@ -345,36 +386,48 @@ function DraggableIdea({ idea }: { idea: Idea }) {
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
   } : undefined;
 
+  const colorClasses: { [key: string]: string } = {
+    rose: 'border-rose-300 bg-rose-50 hover:bg-rose-100',
+    pink: 'border-pink-300 bg-pink-50 hover:bg-pink-100',
+    purple: 'border-purple-300 bg-purple-50 hover:bg-purple-100',
+    blue: 'border-blue-300 bg-blue-50 hover:bg-blue-100',
+    cyan: 'border-cyan-300 bg-cyan-50 hover:bg-cyan-100',
+    teal: 'border-teal-300 bg-teal-50 hover:bg-teal-100',
+    emerald: 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100',
+    amber: 'border-amber-300 bg-amber-50 hover:bg-amber-100',
+    orange: 'border-orange-300 bg-orange-50 hover:bg-orange-100',
+    red: 'border-red-300 bg-red-50 hover:bg-red-100',
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       {...listeners}
       {...attributes}
-      className={`p-3 bg-white border-l-4 border-${idea.color}-400 rounded-xl cursor-move hover:shadow-md transition-all ${
-        isDragging ? 'opacity-50 rotate-3 scale-105' : ''
-      }`}
+      className={`p-4 bg-white border-l-4 ${colorClasses[idea.color] || colorClasses.pink} rounded-2xl cursor-move hover:shadow-lg transition-all transform hover:scale-[1.02] ${isDragging ? 'opacity-60 rotate-3 scale-105 shadow-2xl' : 'shadow-md'}`}
     >
       {idea.imageUrl && (
-        <img src={idea.imageUrl} alt="" className="w-full h-20 object-cover rounded-lg mb-2" />
+        <img src={idea.imageUrl} alt="" className="w-full h-24 object-cover rounded-xl mb-3 shadow-sm" />
       )}
-      <h3 className="font-semibold text-gray-800 text-sm">{idea.title}</h3>
-      <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
-        <span className="flex items-center gap-1">
+      <h3 className="font-bold text-gray-800 text-sm mb-1">{idea.title}</h3>
+      <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+        <span className="flex items-center gap-1 bg-white/70 px-2 py-1 rounded-full">
           <Clock className="w-3 h-3" />
           {idea.duration || 'TBD'}
         </span>
-        {idea.budget && <span className="text-green-600 font-medium">${idea.budget}</span>}
+        {idea.budget && <span className="text-pink-600 font-bold bg-pink-100 px-2 py-1 rounded-full">${idea.budget}</span>}
       </div>
     </div>
   );
 }
 
-function DroppableDay({ day, index, ideas, onUnschedule }: { 
+function DroppableDay({ day, index, ideas, onUnschedule, isWeekend }: { 
   day: Date; 
   index: number; 
   ideas: Idea[];
   onUnschedule: (id: string) => void;
+  isWeekend: boolean;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `day-${index}`,
@@ -383,20 +436,18 @@ function DroppableDay({ day, index, ideas, onUnschedule }: {
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-[100px] p-2 rounded-xl border-2 transition-all ${
-        isOver ? 'border-purple-400 bg-purple-50' : 'border-gray-100 bg-gray-50/50'
-      }`}
+      className={`min-h-[100px] p-2 rounded-2xl border-2 transition-all ${isWeekend ? 'bg-pink-50/30' : 'bg-white/40'} ${isOver ? 'border-pink-400 bg-pink-100 shadow-inner scale-[1.02]' : 'border-pink-100 hover:border-pink-200'}`}
     >
-      <div className="text-sm font-medium text-gray-700 mb-1">{format(day, 'd')}</div>
+      <div className={`text-sm font-bold mb-1 ${isWeekend ? 'text-pink-500' : 'text-gray-600'}`}>{format(day, 'd')}</div>
       <div className="space-y-1">
         {ideas.map(idea => (
           <div 
             key={idea.id}
             onClick={() => onUnschedule(idea.id)}
-            className="text-xs p-2 rounded-lg bg-white border border-gray-200 shadow-sm cursor-pointer hover:shadow-md transition-all"
+            className="text-xs p-2 rounded-xl bg-white border border-pink-200 shadow-sm cursor-pointer hover:shadow-md hover:border-pink-300 transition-all transform hover:scale-105"
           >
-            <div className="font-medium truncate">{idea.title}</div>
-            {idea.budget && <div className="text-green-600">${idea.budget}</div>}
+            <div className="font-bold text-gray-700 truncate">{idea.title}</div>
+            {idea.budget && <div className="text-pink-500 font-bold text-[10px]">${idea.budget}</div>}
           </div>
         ))}
       </div>
