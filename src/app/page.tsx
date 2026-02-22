@@ -3,10 +3,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DndContext, DragEndEvent, useDraggable, useDroppable, DragOverlay } from '@dnd-kit/core';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfYear, endOfYear, eachMonthOfInterval, getYear, setYear, setMonth, isSameMonth } from 'date-fns';
-import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload, Sparkles, Moon, Sun, ChevronLeft, ChevronRight, Trash2, Settings, Download, Users } from 'lucide-react';
+import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload, Sparkles, Moon, Sun, ChevronLeft, ChevronRight, Trash2, Settings, Download, Users, LogIn } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, EMOJIS } from './providers';
 import * as XLSX from 'xlsx';
+import { db } from '@/lib/firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  onSnapshot, 
+  query,
+  Timestamp,
+  getDocs
+} from 'firebase/firestore';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
 
 interface Idea {
   id: string;
@@ -60,7 +72,6 @@ const AUTHOR_BG_COLORS = { AY: 'bg-pink-100', AK: 'bg-purple-100' };
 const AUTHOR_TEXT_COLORS = { AY: 'text-pink-700', AK: 'text-purple-700' };
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// Simple time options
 const TIME_OPTIONS = [
   '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
   '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
@@ -69,9 +80,21 @@ const TIME_OPTIONS = [
   '22:00', '22:30', '23:00', '23:30'
 ];
 
+// Helper to convert Idea to Firestore format
+const ideaToFirestore = (idea: Idea) => ({
+  ...idea,
+  scheduledAt: idea.scheduledAt ? Timestamp.fromDate(idea.scheduledAt) : null,
+});
+
+// Helper to convert Firestore format to Idea
+const ideaFromFirestore = (data: any): Idea => ({
+  ...data,
+  scheduledAt: data.scheduledAt ? data.scheduledAt.toDate() : null,
+});
+
 export default function CouplePlanner() {
   const { theme, toggleTheme, author, toggleAuthor } = useTheme();
-  const [ideas, setIdeas] = useState<Idea[]>(INITIAL_IDEAS);
+  const [ideas, setIdeas] = useState<Idea[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 1));
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -87,10 +110,68 @@ export default function CouplePlanner() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [tempBudget, setTempBudget] = useState('');
   const [randomEmoji, setRandomEmoji] = useState('✨');
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const auth = getAuth();
+
+  // Auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, [auth]);
+
+  // Real-time Firestore listener
+  useEffect(() => {
+    if (!user) {
+      setIdeas(INITIAL_IDEAS);
+      return;
+    }
+
+    const ideasQuery = query(collection(db, 'ideas'));
+    const budgetsQuery = query(collection(db, 'budgets'));
+
+    const unsubIdeas = onSnapshot(ideasQuery, (snapshot) => {
+      const ideasData = snapshot.docs.map(doc => ideaFromFirestore({ id: doc.id, ...doc.data() }));
+      setIdeas(ideasData.length > 0 ? ideasData : INITIAL_IDEAS);
+    });
+
+    const unsubBudgets = onSnapshot(budgetsQuery, (snapshot) => {
+      const budgetsData = snapshot.docs.map(doc => doc.data() as MonthlyBudget);
+      setMonthlyBudgets(budgetsData);
+    });
+
+    return () => {
+      unsubIdeas();
+      unsubBudgets();
+    };
+  }, [user]);
 
   useEffect(() => {
     setRandomEmoji(EMOJIS[Math.floor(Math.random() * EMOJIS.length)]);
   }, []);
+
+  const signInWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error('Sign in error:', error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      setIdeas(INITIAL_IDEAS);
+      setMonthlyBudgets([]);
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
+  };
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -115,6 +196,23 @@ export default function CouplePlanner() {
   const remainingBudget = totalBudget - spentThisMonth;
   const isOverBudget = remainingBudget < 0;
 
+  // Firestore operations
+  const saveIdea = async (idea: Idea) => {
+    if (!user) return;
+    await setDoc(doc(db, 'ideas', idea.id), ideaToFirestore(idea));
+  };
+
+  const deleteIdeaFromDb = async (id: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, 'ideas', id));
+  };
+
+  const saveBudget = async (budget: MonthlyBudget) => {
+    if (!user) return;
+    const id = `${budget.year}-${budget.month}`;
+    await setDoc(doc(db, 'budgets', id), budget);
+  };
+
   const handleDragStart = (id: string) => {
     setActiveDragId(id);
   };
@@ -125,16 +223,22 @@ export default function CouplePlanner() {
     
     if (!over) return;
 
-    // Dropping on calendar day
     if (over.id.toString().startsWith('day-')) {
       const dayIndex = parseInt(over.id.toString().replace('day-', ''));
       const date = days[dayIndex];
       
-      setIdeas(ideas.map(idea => 
-        idea.id === active.id 
-          ? { ...idea, scheduledAt: date, isScheduled: true, author, startTime: '09:00', endTime: '11:00' }
-          : idea
-      ));
+      const updatedIdea = ideas.find(i => i.id === active.id);
+      if (updatedIdea) {
+        const newIdea = { 
+          ...updatedIdea, 
+          scheduledAt: date, 
+          isScheduled: true, 
+          author, 
+          startTime: '09:00', 
+          endTime: '11:00' 
+        };
+        saveIdea(newIdea);
+      }
     }
   };
 
@@ -147,8 +251,8 @@ export default function CouplePlanner() {
     }
   };
 
-  const addIdea = () => {
-    if (!newIdea.title) return;
+  const addIdea = async () => {
+    if (!newIdea.title || !user) return;
     const idea: Idea = {
       id: Date.now().toString(),
       title: newIdea.title.startsWith('📍') || newIdea.title.startsWith('✨') ? newIdea.title : `✨ ${newIdea.title}`,
@@ -162,26 +266,38 @@ export default function CouplePlanner() {
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
       author,
     };
-    setIdeas([...ideas, idea]);
+    await saveIdea(idea);
     setNewIdea({ title: '', description: '', duration: '', category: 'adventure', budget: '' });
     setPreviewImage(null);
     setShowAddModal(false);
   };
 
-  const deleteIdea = useCallback((id: string) => {
-    setIdeas(prev => prev.filter(i => i.id !== id));
-  }, []);
+  const deleteIdea = useCallback(async (id: string) => {
+    await deleteIdeaFromDb(id);
+  }, [user]);
 
-  const unscheduleIdea = useCallback((id: string) => {
-    setIdeas(prev => prev.map(idea => 
-      idea.id === id ? { ...idea, scheduledAt: null, isScheduled: false, startTime: undefined, endTime: undefined } : idea
-    ));
-  }, []);
+  const unscheduleIdea = useCallback(async (id: string) => {
+    if (!user) return;
+    const idea = ideas.find(i => i.id === id);
+    if (idea) {
+      const updated = { 
+        ...idea, 
+        scheduledAt: null, 
+        isScheduled: false, 
+        startTime: undefined, 
+        endTime: undefined 
+      };
+      await saveIdea(updated);
+    }
+  }, [ideas, user]);
 
-  const updateActivityTime = (ideaId: string, field: 'startTime' | 'endTime', value: string) => {
-    setIdeas(prev => prev.map(idea => 
-      idea.id === ideaId ? { ...idea, [field]: value } : idea
-    ));
+  const updateActivityTime = async (ideaId: string, field: 'startTime' | 'endTime', value: string) => {
+    if (!user) return;
+    const idea = ideas.find(i => i.id === ideaId);
+    if (idea) {
+      const updated = { ...idea, [field]: value };
+      await saveIdea(updated);
+    }
   };
 
   const pickRandom = () => {
@@ -193,17 +309,15 @@ export default function CouplePlanner() {
     }
   };
 
-  const setBudget = () => {
+  const setBudget = async () => {
+    if (!user) return;
     const budget = parseFloat(tempBudget) || 0;
-    const newBudgets = monthlyBudgets.filter(
-      b => !(b.year === currentDate.getFullYear() && b.month === currentDate.getMonth())
-    );
-    newBudgets.push({
+    const newBudget: MonthlyBudget = {
       year: currentDate.getFullYear(),
       month: currentDate.getMonth(),
       budget
-    });
-    setMonthlyBudgets(newBudgets);
+    };
+    await saveBudget(newBudget);
     setShowBudgetModal(false);
     setTempBudget('');
   };
@@ -216,7 +330,6 @@ export default function CouplePlanner() {
     setCurrentDate(setMonth(currentDate, monthIndex));
   };
 
-  // Excel Export
   const exportToExcel = (type: 'month' | 'day') => {
     const exportData: any[] = [];
     
@@ -291,10 +404,52 @@ export default function CouplePlanner() {
 
   const activeIdea = ideas.find(i => i.id === activeDragId);
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          className="text-6xl"
+        >
+          💕
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen p-4 md:p-6">
       <div className="max-w-[1400px] mx-auto">
-        {/* Header */}
+        {/* Auth Header */}
+        <div className="flex justify-end mb-4">
+          {user ? (
+            <div className="flex items-center gap-3 bg-card-bg backdrop-blur-md px-4 py-2 rounded-2xl shadow-lg border-2 border-border-custom">
+              <img src={user.photoURL || ''} alt="" className="w-8 h-8 rounded-full" />
+              <span className="text-sm text-primary font-medium">{user.displayName}</span>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleSignOut}
+                className="text-xs text-red-500 hover:text-red-600 font-medium"
+              >
+                Sign Out
+              </motion.button>
+            </div>
+          ) : (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={signInWithGoogle}
+              className="flex items-center gap-2 bg-card-bg backdrop-blur-md px-4 py-2 rounded-2xl shadow-lg border-2 border-border-custom text-primary font-medium"
+            >
+              <LogIn className="w-4 h-4" />
+              Sign in with Google
+            </motion.button>
+          )}
+        </div>
+
+        {/* Main Header */}
         <header className="mb-6 text-center relative">
           <div className="absolute right-0 top-0 flex gap-2">
             <motion.button
@@ -333,12 +488,23 @@ export default function CouplePlanner() {
             {format(currentDate, 'MMMM yyyy')}
           </motion.p>
           
+          {!user && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 p-4 bg-yellow-100 dark:bg-yellow-900/30 border-2 border-yellow-300 dark:border-yellow-700 rounded-2xl text-yellow-800 dark:text-yellow-200"
+            >
+              <p className="font-medium">👋 Sign in with Google to save your plans and sync with your partner!</p>
+              <p className="text-sm mt-1 opacity-80">Without signing in, changes will be lost when you refresh.</p>
+            </motion.div>
+          )}
+          
           {/* Budget & Author Toggle */}
           <div className="flex justify-center gap-4 flex-wrap">
             <motion.div 
               whileHover={{ scale: 1.02 }}
               className="inline-flex items-center gap-3 bg-card-bg backdrop-blur-md px-6 py-3 rounded-2xl shadow-xl border-2 border-border-custom cursor-pointer"
-              onClick={() => setShowBudgetModal(true)}
+              onClick={() => user && setShowBudgetModal(true)}
             >
               <div className="bg-pink-100 dark:bg-pink-900 p-2 rounded-full">
                 <DollarSign className="w-5 h-5 text-pink-600 dark:text-pink-300" />
@@ -355,7 +521,7 @@ export default function CouplePlanner() {
                   </span>
                 </div>
               </div>
-              <Settings className="w-4 h-4 text-secondary" />
+              {user && <Settings className="w-4 h-4 text-secondary" />}
             </motion.div>
 
             <motion.button
@@ -404,7 +570,7 @@ export default function CouplePlanner() {
                   <motion.button 
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
-                    onClick={() => setShowAddModal(true)}
+                    onClick={() => user ? setShowAddModal(true) : signInWithGoogle()}
                     className="bg-gradient-to-r from-pink-400 to-rose-400 text-white p-2 rounded-xl shadow-md"
                   >
                     <Plus className="w-4 h-4" />
@@ -726,11 +892,18 @@ export default function CouplePlanner() {
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={() => {
-                          setIdeas(prev => prev.map(i => 
-                            i.id === idea.id 
-                              ? { ...i, scheduledAt: showDayModal, isScheduled: true, startTime: '09:00', endTime: '11:00' }
-                              : i
-                          ));
+                          if (!user) {
+                            signInWithGoogle();
+                            return;
+                          }
+                          const updated = { 
+                            ...idea, 
+                            scheduledAt: showDayModal, 
+                            isScheduled: true, 
+                            startTime: '09:00', 
+                            endTime: '11:00' 
+                          };
+                          saveIdea(updated);
                         }}
                         className={`px-3 py-2 rounded-xl text-xs font-medium ${idea.author === 'AY' ? 'bg-pink-100 text-pink-700' : 'bg-purple-100 text-purple-700'} border border-border-custom`}
                       >
@@ -978,7 +1151,7 @@ export default function CouplePlanner() {
   );
 }
 
-// SIMPLIFIED: Idea Card - just drag handle on the card itself
+// Simplified Idea Card
 function SimpleIdeaCard({ idea, onDelete, onDragStart }: { 
   idea: Idea; 
   onDelete: (id: string) => void;
@@ -988,13 +1161,11 @@ function SimpleIdeaCard({ idea, onDelete, onDragStart }: {
     id: idea.id,
   });
 
-  // Apply transform manually for smoother dragging
   const style = transform ? {
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0) rotate(3deg)`,
     zIndex: 1000,
   } : undefined;
 
-  // Call parent's drag start handler
   useEffect(() => {
     if (isDragging) {
       onDragStart();
@@ -1009,7 +1180,6 @@ function SimpleIdeaCard({ idea, onDelete, onDragStart }: {
       exit={{ opacity: 0, scale: 0.8 }}
       className={`relative ${isDragging ? 'opacity-50' : ''}`}
     >
-      {/* Main card with drag handle */}
       <div
         ref={setNodeRef}
         style={style}
@@ -1039,7 +1209,6 @@ function SimpleIdeaCard({ idea, onDelete, onDragStart }: {
         </div>
       </div>
 
-      {/* Delete button - completely separate, no drag handlers */}
       <button
         onClick={() => onDelete(idea.id)}
         className="absolute top-2 right-2 p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full bg-white dark:bg-purple-800 shadow-sm z-10"
