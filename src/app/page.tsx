@@ -2,7 +2,22 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DndContext, DragEndEvent, useDraggable, useDroppable, DragOverlay } from '@dnd-kit/core';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfYear, endOfYear, eachMonthOfInterval, getYear, setYear, setMonth, isSameMonth } from 'date-fns';
+import { 
+  format, 
+  startOfMonth, 
+  endOfMonth, 
+  eachDayOfInterval, 
+  isSameDay, 
+  startOfYear, 
+  endOfYear, 
+  eachMonthOfInterval, 
+  getYear, 
+  setYear, 
+  setMonth, 
+  isSameMonth,
+  startOfWeek,
+  endOfWeek
+} from 'date-fns';
 import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload, Sparkles, Moon, Sun, ChevronLeft, ChevronRight, Trash2, Settings, Download, Users, LogIn } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, EMOJIS } from './providers';
@@ -80,16 +95,26 @@ const TIME_OPTIONS = [
   '22:00', '22:30', '23:00', '23:30'
 ];
 
+// UTC helpers to fix timezone issues
+function toUTCMidnight(date: Date): Date {
+  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+}
+
+function fromUTCMidnight(timestamp: Timestamp): Date {
+  const date = timestamp.toDate();
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
 // Helper to convert Idea to Firestore format
 const ideaToFirestore = (idea: Idea) => ({
   ...idea,
-  scheduledAt: idea.scheduledAt ? Timestamp.fromDate(idea.scheduledAt) : null,
+  scheduledAt: idea.scheduledAt ? Timestamp.fromDate(toUTCMidnight(idea.scheduledAt)) : null,
 });
 
 // Helper to convert Firestore format to Idea
 const ideaFromFirestore = (data: any): Idea => ({
   ...data,
-  scheduledAt: data.scheduledAt ? data.scheduledAt.toDate() : null,
+  scheduledAt: data.scheduledAt ? fromUTCMidnight(data.scheduledAt) : null,
 });
 
 export default function CouplePlanner() {
@@ -173,9 +198,12 @@ export default function CouplePlanner() {
     }
   };
 
+  // Calculate days with Monday as first day of week
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
-  const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 }); // Monday = 1
+  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
   const currentMonthBudget = monthlyBudgets.find(
     b => b.year === currentDate.getFullYear() && b.month === currentDate.getMonth()
@@ -660,16 +688,21 @@ export default function CouplePlanner() {
               </div>
 
               <div className="grid grid-cols-7 gap-2">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
                   <div key={day} className="text-center text-xs font-bold text-secondary py-2 bg-pink-50/50 dark:bg-purple-900/20 rounded-lg">
                     {day}
                   </div>
                 ))}
                 
                 {days.map((day, idx) => {
+                  const isCurrentMonth = isSameMonth(day, currentDate);
                   const dayIdeas = ideas.filter(i => i.scheduledAt && isSameDay(i.scheduledAt, day));
                   const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-                  const hasActivities = dayIdeas.length > 0;
+                  
+                  // Only show days from current month (gray out others if you want, or filter)
+                  if (!isCurrentMonth) {
+                    return <div key={day.toISOString()} className="min-h-[80px] rounded-xl bg-gray-100/20 dark:bg-gray-800/20 border border-border-custom opacity-50" />;
+                  }
                   
                   return (
                     <SimpleCalendarDay 
@@ -678,7 +711,7 @@ export default function CouplePlanner() {
                       index={idx}
                       ideas={dayIdeas}
                       isWeekend={isWeekend}
-                      hasActivities={hasActivities}
+                      hasActivities={dayIdeas.length > 0}
                       onClick={() => setShowDayModal(day)}
                     />
                   );
