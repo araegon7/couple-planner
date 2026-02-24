@@ -34,3 +34,16 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+
+To fix the terminal after startup use these commands:
+export PATH="$PATH:/c/Program Files/nodejs"
+node --version
+npm --version
+export PATH="$PATH:/c/Program Files/Git/bin:/c/Program Files/nodejs"
+git --version
+
+To add commit and push:
+git add .
+git commit -m ""
+git push origin main

@@ -8,9 +8,6 @@ import {
   endOfMonth, 
   eachDayOfInterval, 
   isSameDay, 
-  startOfYear, 
-  endOfYear, 
-  eachMonthOfInterval, 
   getYear, 
   setYear, 
   setMonth, 
@@ -20,7 +17,7 @@ import {
 } from 'date-fns';
 import { Plus, Calendar, Lightbulb, Clock, DollarSign, Shuffle, X, Upload, Sparkles, Moon, Sun, ChevronLeft, ChevronRight, Trash2, Settings, Download, Users, LogIn } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme, EMOJIS } from './providers';
+import { useTheme, EMOJIS, COLOR_THEMES } from './providers';
 import * as XLSX from 'xlsx';
 import { db } from '@/lib/firebase';
 import { 
@@ -57,6 +54,8 @@ interface MonthlyBudget {
   budget: number;
 }
 
+type ColorTheme = 'romance' | 'ocean' | 'sunset' | 'forest' | 'royal';
+
 const INITIAL_IDEAS: Idea[] = [
   { id: '1', title: '🌅 Desert Safari', description: 'Dune bashing and dinner under the stars', duration: '6 hours', category: 'adventure', budget: 300, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'orange', author: 'AY' },
   { id: '2', title: '🏙️ Burj Khalifa', description: 'Sunset at the top together', duration: '3 hours', category: 'sightseeing', budget: 150, imageUrl: null, scheduledAt: null, isScheduled: false, color: 'blue', author: 'AK' },
@@ -82,9 +81,6 @@ const CATEGORIES = [
 ];
 
 const COLORS = ['rose', 'pink', 'purple', 'blue', 'cyan', 'teal', 'emerald', 'amber', 'orange', 'red'];
-const AUTHOR_COLORS = { AY: 'bg-pink-500', AK: 'bg-purple-500' };
-const AUTHOR_BG_COLORS = { AY: 'bg-pink-100', AK: 'bg-purple-100' };
-const AUTHOR_TEXT_COLORS = { AY: 'text-pink-700', AK: 'text-purple-700' };
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const TIME_OPTIONS = [
@@ -118,7 +114,8 @@ const ideaFromFirestore = (data: any): Idea => ({
 });
 
 export default function CouplePlanner() {
-  const { theme, toggleTheme, author, toggleAuthor } = useTheme();
+  const { theme, toggleTheme, author, toggleAuthor, colorTheme, setColorTheme, colors } = useTheme();
+  
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 1));
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -201,7 +198,7 @@ export default function CouplePlanner() {
   // Calculate days with Monday as first day of week
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
-  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 }); // Monday = 1
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
@@ -304,28 +301,18 @@ export default function CouplePlanner() {
     await deleteIdeaFromDb(id);
   }, [user]);
 
-  // FIXED: This function now properly unschedules an idea
   const unscheduleIdea = useCallback(async (id: string) => {
-    console.log('Unscheduling idea:', id);
-    if (!user) {
-      console.log('No user, returning');
-      return;
-    }
+    if (!user) return;
     const idea = ideas.find(i => i.id === id);
-    console.log('Found idea:', idea);
     if (idea) {
-      // Create update object without undefined values
       const updated: any = { 
         ...idea, 
         scheduledAt: null, 
         isScheduled: false
       };
-      // Remove fields instead of setting to undefined
       delete updated.startTime;
       delete updated.endTime;
-      console.log('Saving updated idea:', updated);
       await saveIdea(updated);
-      console.log('Saved successfully');
     }
   }, [ideas, user]);
 
@@ -442,9 +429,41 @@ export default function CouplePlanner() {
 
   const activeIdea = ideas.find(i => i.id === activeDragId);
 
+  // Theme selector component
+  const renderThemeSelector = () => (
+    <motion.div 
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex gap-2 mb-4 justify-center flex-wrap"
+    >
+      {(Object.keys(COLOR_THEMES) as ColorTheme[]).map((t) => (
+        <motion.button
+          key={t}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setColorTheme(t)}
+          className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+            colorTheme === t 
+              ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 scale-105' 
+              : 'opacity-70 hover:opacity-100'
+          }`}
+          style={{
+            backgroundColor: theme === 'dark' ? COLOR_THEMES[t].dark.card : COLOR_THEMES[t].light.card,
+            color: theme === 'dark' ? COLOR_THEMES[t].dark.text : COLOR_THEMES[t].light.text,
+            border: `2px solid ${theme === 'dark' ? COLOR_THEMES[t].dark.border : COLOR_THEMES[t].light.border}`,
+            boxShadow: colorTheme === t ? `0 4px 14px ${theme === 'dark' ? COLOR_THEMES[t].dark.primary : COLOR_THEMES[t].light.primary}40` : 'none'
+          }}
+        >
+          <span className="mr-1">{COLOR_THEMES[t].emoji}</span>
+          {COLOR_THEMES[t].name}
+        </motion.button>
+      ))}
+    </motion.div>
+  );
+
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ background: `linear-gradient(to bottom right, ${colors.bg})` }}>
         <motion.div 
           animate={{ rotate: 360 }}
           transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
@@ -457,8 +476,28 @@ export default function CouplePlanner() {
   }
 
   return (
-    <div className="min-h-screen p-4 md:p-6">
+    <div className={`min-h-screen p-4 md:p-6 bg-gradient-to-br ${colors.bg} transition-all duration-500`}>
+      {/* CSS Variables for theme colors */}
+      <style jsx global>{`
+        :root {
+          --color-primary: ${colors.primary};
+          --color-secondary: ${colors.secondary};
+          --color-accent: ${colors.accent};
+          --color-card: ${colors.card};
+          --color-border: ${colors.border};
+          --color-text: ${colors.text};
+          --color-text-secondary: ${colors.textSecondary};
+        }
+        .text-primary { color: ${colors.text} !important; }
+        .text-secondary { color: ${colors.textSecondary} !important; }
+        .bg-card-bg { background-color: ${colors.card} !important; }
+        .border-border-custom { border-color: ${colors.border} !important; }
+      `}</style>
+      
       <div className="max-w-[1400px] mx-auto">
+        {/* Theme Selector */}
+        {renderThemeSelector()}
+
         {/* Auth Header */}
         <div className="flex justify-end mb-4">
           {user ? (
@@ -496,7 +535,7 @@ export default function CouplePlanner() {
               onClick={toggleTheme}
               className="p-3 rounded-full bg-card-bg border-2 border-border-custom shadow-lg"
             >
-              {theme === 'dark' ? <Sun className="w-6 h-6 text-yellow-400" /> : <Moon className="w-6 h-6 text-purple-600" />}
+              {theme === 'dark' ? <Sun className="w-6 h-6" style={{ color: colors.accent }} /> : <Moon className="w-6 h-6" style={{ color: colors.secondary }} />}
             </motion.button>
           </div>
 
@@ -505,15 +544,20 @@ export default function CouplePlanner() {
             animate={{ y: 0, opacity: 1 }}
             className="inline-flex items-center gap-2 bg-card-bg backdrop-blur-md px-6 py-2 rounded-full shadow-lg mb-3 border-2 border-border-custom"
           >
-            <Sparkles className="w-5 h-5 text-pink-500" />
+            <Sparkles className="w-5 h-5" style={{ color: colors.primary }} />
             <span className="text-primary font-medium">Idea Calendar</span>
-            <Sparkles className="w-5 h-5 text-pink-500" />
+            <Sparkles className="w-5 h-5" style={{ color: colors.primary }} />
           </motion.div>
           
           <motion.h1 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 bg-clip-text text-transparent mb-2"
+            className="text-4xl md:text-5xl font-bold mb-2"
+            style={{ 
+              background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}
           >
             A + A Adventure {randomEmoji}
           </motion.h1>
@@ -521,7 +565,7 @@ export default function CouplePlanner() {
           <motion.p 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-secondary text-lg mb-4 font-medium"
+            className="text-lg mb-4 font-medium text-secondary"
           >
             {format(currentDate, 'MMMM yyyy')}
           </motion.p>
@@ -530,10 +574,15 @@ export default function CouplePlanner() {
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-4 p-4 bg-yellow-100 dark:bg-yellow-900/30 border-2 border-yellow-300 dark:border-yellow-700 rounded-2xl text-yellow-800 dark:text-yellow-200"
+              className="mb-4 p-4 rounded-2xl text-sm"
+              style={{ 
+                backgroundColor: theme === 'dark' ? 'rgba(50, 40, 20, 0.8)' : 'rgba(254, 252, 232, 0.9)',
+                border: `2px solid ${theme === 'dark' ? '#854d0e' : '#fde047'}`,
+                color: theme === 'dark' ? '#fef08a' : '#854d0e'
+              }}
             >
               <p className="font-medium">👋 Sign in with Google to save your plans and sync with your partner!</p>
-              <p className="text-sm mt-1 opacity-80">Without signing in, changes will be lost when you refresh.</p>
+              <p className="mt-1 opacity-80">Without signing in, changes will be lost when you refresh.</p>
             </motion.div>
           )}
           
@@ -544,17 +593,17 @@ export default function CouplePlanner() {
               className="inline-flex items-center gap-3 bg-card-bg backdrop-blur-md px-6 py-3 rounded-2xl shadow-xl border-2 border-border-custom cursor-pointer"
               onClick={() => user && setShowBudgetModal(true)}
             >
-              <div className="bg-pink-100 dark:bg-pink-900 p-2 rounded-full">
-                <DollarSign className="w-5 h-5 text-pink-600 dark:text-pink-300" />
+              <div className="p-2 rounded-full" style={{ backgroundColor: `${colors.primary}20` }}>
+                <DollarSign className="w-5 h-5" style={{ color: colors.primary }} />
               </div>
               <div className="text-left">
-                <span className="text-secondary text-xs font-medium">Monthly Budget</span>
+                <span className="text-xs font-medium text-secondary">Monthly Budget</span>
                 <div className="flex items-baseline gap-2">
                   <span className="text-2xl font-bold text-primary">
                     ${totalBudget}
                   </span>
                   <span className="text-secondary text-sm">/</span>
-                  <span className={`text-2xl font-bold ${isOverBudget ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
+                  <span className={`text-2xl font-bold ${isOverBudget ? 'text-red-500' : ''}`} style={{ color: isOverBudget ? '#ef4444' : '#22c55e' }}>
                     {isOverBudget ? <span className="flex items-center gap-1">🔻 ${Math.abs(remainingBudget)}</span> : `$${remainingBudget}`}
                   </span>
                 </div>
@@ -568,11 +617,11 @@ export default function CouplePlanner() {
               onClick={toggleAuthor}
               className="inline-flex items-center gap-3 bg-card-bg backdrop-blur-md px-6 py-3 rounded-2xl shadow-xl border-2 border-border-custom"
             >
-              <Users className="w-5 h-5 text-purple-500" />
+              <Users className="w-5 h-5" style={{ color: colors.secondary }} />
               <div className="text-left">
-                <span className="text-secondary text-xs font-medium">Planning as</span>
+                <span className="text-xs font-medium text-secondary">Planning as</span>
                 <div className="flex items-center gap-2">
-                  <span className={`w-3 h-3 rounded-full ${AUTHOR_COLORS[author]}`} />
+                  <span className={`w-3 h-3 rounded-full ${author === 'AY' ? colors.ideaAY.split(' ')[0] : colors.ideaAK.split(' ')[0]}`} />
                   <span className="font-bold text-primary">{author}</span>
                 </div>
               </div>
@@ -580,9 +629,7 @@ export default function CouplePlanner() {
           </div>
         </header>
 
-        <DndContext 
-          onDragEnd={handleDragEnd}
-        >
+        <DndContext onDragEnd={handleDragEnd}>
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             
             {/* Section 1: Ideas */}
@@ -593,15 +640,20 @@ export default function CouplePlanner() {
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold text-primary flex items-center gap-2">
-                  <span className="bg-yellow-100 dark:bg-yellow-900 p-2 rounded-xl">💡</span>
-                  <span className="bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">Our Ideas</span>
+                  <span className="p-2 rounded-xl" style={{ backgroundColor: `${colors.accent}20` }}>💡</span>
+                  <span style={{ 
+                    background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent'
+                  }}>Our Ideas</span>
                 </h2>
                 <div className="flex gap-2">
                   <motion.button 
                     whileHover={{ scale: 1.1, rotate: 180 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={pickRandom}
-                    className="bg-gradient-to-r from-purple-400 to-pink-400 text-white p-2 rounded-xl shadow-md"
+                    className="text-white p-2 rounded-xl shadow-md"
+                    style={{ background: `linear-gradient(to right, ${colors.secondary}, ${colors.primary})` }}
                   >
                     <Shuffle className="w-4 h-4" />
                   </motion.button>
@@ -609,7 +661,8 @@ export default function CouplePlanner() {
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={() => user ? setShowAddModal(true) : signInWithGoogle()}
-                    className="bg-gradient-to-r from-pink-400 to-rose-400 text-white p-2 rounded-xl shadow-md"
+                    className="text-white p-2 rounded-xl shadow-md"
+                    style={{ background: `linear-gradient(to right, ${colors.primary}, ${colors.accent})` }}
                   >
                     <Plus className="w-4 h-4" />
                   </motion.button>
@@ -625,9 +678,15 @@ export default function CouplePlanner() {
                     onClick={() => setSelectedCategory(cat.id)}
                     className={`px-2 py-1 rounded-full text-[10px] font-medium transition-all ${
                       selectedCategory === cat.id 
-                        ? 'bg-gradient-to-r from-pink-400 to-purple-400 text-white shadow-md' 
-                        : 'bg-pink-50 dark:bg-purple-900/30 text-pink-600 dark:text-pink-300 border border-border-custom'
+                        ? 'text-white shadow-md' 
+                        : 'border border-border-custom'
                     }`}
+                    style={selectedCategory === cat.id ? { 
+                      background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`,
+                    } : {
+                      backgroundColor: theme === 'dark' ? `${colors.primary}20` : `${colors.primary}10`,
+                      color: colors.text
+                    }}
                   >
                     {cat.emoji} {cat.label}
                   </motion.button>
@@ -642,6 +701,8 @@ export default function CouplePlanner() {
                       idea={idea} 
                       onDelete={deleteIdea}
                       onDragStart={() => handleDragStart(idea.id)}
+                      colors={colors}
+                      theme={theme}
                     />
                   ))}
                 </AnimatePresence>
@@ -649,7 +710,8 @@ export default function CouplePlanner() {
                   <motion.div 
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="text-center py-6 bg-pink-50/50 dark:bg-purple-900/20 rounded-2xl border-2 border-dashed border-border-custom"
+                    className="text-center py-6 rounded-2xl border-2 border-dashed border-border-custom"
+                    style={{ backgroundColor: theme === 'dark' ? `${colors.primary}10` : `${colors.primary}05` }}
                   >
                     <span className="text-3xl mb-2 block">✨</span>
                     <p className="text-secondary text-sm">No ideas yet! Add some 💕</p>
@@ -666,8 +728,12 @@ export default function CouplePlanner() {
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold text-primary flex items-center gap-2">
-                  <span className="bg-purple-100 dark:bg-purple-900 p-2 rounded-xl">📅</span>
-                  <span className="bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent">
+                  <span className="p-2 rounded-xl" style={{ backgroundColor: `${colors.secondary}20` }}>📅</span>
+                  <span style={{ 
+                    background: `linear-gradient(to right, ${colors.secondary}, ${colors.accent})`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent'
+                  }}>
                     {format(currentDate, 'MMMM yyyy')}
                   </span>
                 </h2>
@@ -676,7 +742,11 @@ export default function CouplePlanner() {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => exportToExcel('month')}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-full text-sm font-medium"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium"
+                    style={{ 
+                      backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.1)',
+                      color: '#22c55e'
+                    }}
                   >
                     <Download className="w-4 h-4" />
                     Export Month
@@ -689,7 +759,14 @@ export default function CouplePlanner() {
 
               <div className="grid grid-cols-7 gap-2">
                 {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-                  <div key={day} className="text-center text-xs font-bold text-secondary py-2 bg-pink-50/50 dark:bg-purple-900/20 rounded-lg">
+                  <div 
+                    key={day} 
+                    className="text-center text-xs font-bold py-2 rounded-lg"
+                    style={{ 
+                      backgroundColor: theme === 'dark' ? `${colors.primary}20` : `${colors.primary}10`,
+                      color: colors.text
+                    }}
+                  >
                     {day}
                   </div>
                 ))}
@@ -699,9 +776,12 @@ export default function CouplePlanner() {
                   const dayIdeas = ideas.filter(i => i.scheduledAt && isSameDay(i.scheduledAt, day));
                   const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                   
-                  // Only show days from current month (gray out others if you want, or filter)
                   if (!isCurrentMonth) {
-                    return <div key={day.toISOString()} className="min-h-[80px] rounded-xl bg-gray-100/20 dark:bg-gray-800/20 border border-border-custom opacity-50" />;
+                    return <div 
+                      key={day.toISOString()} 
+                      className="min-h-[80px] rounded-xl border border-border-custom opacity-50"
+                      style={{ backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)' }}
+                    />;
                   }
                   
                   return (
@@ -713,6 +793,8 @@ export default function CouplePlanner() {
                       isWeekend={isWeekend}
                       hasActivities={dayIdeas.length > 0}
                       onClick={() => setShowDayModal(day)}
+                      colors={colors}
+                      theme={theme}
                     />
                   );
                 })}
@@ -730,7 +812,8 @@ export default function CouplePlanner() {
                   whileHover={{ scale: 1.2 }}
                   whileTap={{ scale: 0.8 }}
                   onClick={() => changeYear(-1)}
-                  className="p-2 rounded-full bg-pink-100 dark:bg-purple-900 text-pink-600 dark:text-pink-300"
+                  className="p-2 rounded-full"
+                  style={{ backgroundColor: `${colors.primary}20`, color: colors.primary }}
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </motion.button>
@@ -739,7 +822,8 @@ export default function CouplePlanner() {
                   whileHover={{ scale: 1.2 }}
                   whileTap={{ scale: 0.8 }}
                   onClick={() => changeYear(1)}
-                  className="p-2 rounded-full bg-pink-100 dark:bg-purple-900 text-pink-600 dark:text-pink-300"
+                  className="p-2 rounded-full"
+                  style={{ backgroundColor: `${colors.primary}20`, color: colors.primary }}
                 >
                   <ChevronRight className="w-5 h-5" />
                 </motion.button>
@@ -761,23 +845,33 @@ export default function CouplePlanner() {
                       whileTap={{ scale: 0.95 }}
                       onClick={() => selectMonth(idx)}
                       className={`p-3 rounded-xl text-sm font-medium transition-all relative ${
-                        isSelected
-                          ? 'bg-gradient-to-r from-pink-400 to-purple-400 text-white shadow-lg'
-                          : 'bg-pink-50 dark:bg-purple-900/30 text-secondary hover:bg-pink-100 dark:hover:bg-purple-900/50'
+                        isSelected ? 'text-white shadow-lg' : ''
                       }`}
+                      style={isSelected ? {
+                        background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`,
+                      } : {
+                        backgroundColor: theme === 'dark' ? `${colors.primary}15` : `${colors.primary}08`,
+                        color: colors.text
+                      }}
                     >
                       {month}
                       {hasActivities && !isSelected && (
-                        <span className="absolute top-1 right-1 w-2 h-2 bg-pink-500 rounded-full" />
+                        <span 
+                          className="absolute top-1 right-1 w-2 h-2 rounded-full" 
+                          style={{ backgroundColor: colors.primary }}
+                        />
                       )}
                     </motion.button>
                   );
                 })}
               </div>
 
-              <div className="mt-6 p-4 bg-pink-50 dark:bg-purple-900/20 rounded-2xl border border-border-custom">
+              <div 
+                className="mt-6 p-4 rounded-2xl border border-border-custom"
+                style={{ backgroundColor: theme === 'dark' ? `${colors.primary}10` : `${colors.primary}05` }}
+              >
                 <h3 className="text-sm font-bold text-primary mb-2 flex items-center gap-2">
-                  <span className="text-pink-500">📊</span>
+                  <span style={{ color: colors.primary }}>📊</span>
                   This Month
                 </h3>
                 <div className="space-y-2 text-xs text-secondary">
@@ -787,33 +881,35 @@ export default function CouplePlanner() {
                   </div>
                   <div className="flex justify-between">
                     <span>Planned by AY:</span>
-                    <span className="font-bold text-pink-500">
-                      {scheduledThisMonth.filter(i => i.author === 'AY').length}
-                    </span>
+                    <span className="font-bold" style={{ color: colors.primary }}>{scheduledThisMonth.filter(i => i.author === 'AY').length}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Planned by AK:</span>
-                    <span className="font-bold text-purple-500">
-                      {scheduledThisMonth.filter(i => i.author === 'AK').length}
-                    </span>
+                    <span className="font-bold" style={{ color: colors.secondary }}>{scheduledThisMonth.filter(i => i.author === 'AK').length}</span>
                   </div>
                 </div>
               </div>
             </motion.div>
           </div>
 
-          {/* Simple Drag Overlay */}
+          {/* Drag Overlay */}
           <DragOverlay>
             {activeIdea ? (
-              <div className="p-4 bg-white dark:bg-purple-800 border-2 border-pink-400 rounded-2xl shadow-2xl opacity-90 rotate-3 pointer-events-none">
-                <p className="font-bold text-primary text-sm">{activeIdea.title}</p>
+              <div 
+                className="p-4 border-2 rounded-2xl shadow-2xl opacity-90 rotate-3 pointer-events-none"
+                style={{ 
+                  backgroundColor: colors.card,
+                  borderColor: colors.primary
+                }}
+              >
+                <p className="font-bold text-sm text-primary">{activeIdea.title}</p>
                 <p className="text-xs text-secondary">{activeIdea.duration}</p>
               </div>
             ) : null}
           </DragOverlay>
         </DndContext>
 
-        {/* Day Schedule Modal with Simple Time Dropdowns */}
+        {/* Day Schedule Modal */}
         <AnimatePresence>
           {showDayModal && (
             <motion.div 
@@ -827,12 +923,23 @@ export default function CouplePlanner() {
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.8, opacity: 0 }}
-                className="bg-card-bg rounded-3xl p-6 w-full max-w-2xl shadow-2xl border-4 border-border-custom max-h-[90vh] overflow-y-auto"
+                className="rounded-3xl p-6 w-full max-w-2xl shadow-2xl border-4 max-h-[90vh] overflow-y-auto"
+                style={{ 
+                  backgroundColor: colors.card,
+                  borderColor: colors.border
+                }}
                 onClick={e => e.stopPropagation()}
               >
                 <div className="flex justify-between items-center mb-4">
                   <div>
-                    <h3 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
+                    <h3 
+                      className="text-2xl font-bold mb-1"
+                      style={{ 
+                        background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`,
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent'
+                      }}
+                    >
                       {format(showDayModal, 'EEEE, MMMM do')}
                     </h3>
                     <p className="text-sm text-secondary">Click time dropdowns to change schedule ⏰</p>
@@ -842,7 +949,8 @@ export default function CouplePlanner() {
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.9 }}
                       onClick={() => exportToExcel('day')}
-                      className="p-2 bg-green-100 dark:bg-green-900 text-green-600 rounded-full"
+                      className="p-2 rounded-full"
+                      style={{ backgroundColor: 'rgba(34, 197, 94, 0.2)', color: '#22c55e' }}
                     >
                       <Download className="w-5 h-5" />
                     </motion.button>
@@ -850,14 +958,15 @@ export default function CouplePlanner() {
                       whileHover={{ scale: 1.1, rotate: 90 }}
                       whileTap={{ scale: 0.9 }}
                       onClick={() => setShowDayModal(null)}
-                      className="p-2 bg-pink-100 dark:bg-pink-900 text-pink-600 rounded-full"
+                      className="p-2 rounded-full"
+                      style={{ backgroundColor: `${colors.primary}20`, color: colors.primary }}
                     >
                       <X className="w-5 h-5" />
                     </motion.button>
                   </div>
                 </div>
 
-                {/* Activities List with Time Pickers */}
+                {/* Activities List */}
                 <div className="space-y-3">
                   {ideas
                     .filter(i => i.scheduledAt && isSameDay(i.scheduledAt, showDayModal))
@@ -867,14 +976,18 @@ export default function CouplePlanner() {
                       key={idea.id}
                       initial={{ x: -20, opacity: 0 }}
                       animate={{ x: 0, opacity: 1 }}
-                      className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row gap-3 items-start sm:items-center ${idea.author === 'AY' ? 'bg-pink-50 border-pink-200' : 'bg-purple-50 border-purple-200'}`}
+                      className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row gap-3 items-start sm:items-center ${idea.author === 'AY' ? colors.ideaAY : colors.ideaAK}`}
                     >
                       {/* Time Pickers */}
                       <div className="flex items-center gap-2">
                         <select
                           value={idea.startTime || '09:00'}
                           onChange={(e) => updateActivityTime(idea.id, 'startTime', e.target.value)}
-                          className="p-2 border-2 border-border-custom rounded-lg text-sm bg-transparent text-primary focus:border-pink-400"
+                          className="p-2 border-2 rounded-lg text-sm bg-transparent focus:outline-none"
+                          style={{ 
+                            borderColor: colors.border,
+                            color: colors.text
+                          }}
                         >
                           {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
@@ -882,7 +995,11 @@ export default function CouplePlanner() {
                         <select
                           value={idea.endTime || '11:00'}
                           onChange={(e) => updateActivityTime(idea.id, 'endTime', e.target.value)}
-                          className="p-2 border-2 border-border-custom rounded-lg text-sm bg-transparent text-primary focus:border-pink-400"
+                          className="p-2 border-2 rounded-lg text-sm bg-transparent focus:outline-none"
+                          style={{ 
+                            borderColor: colors.border,
+                            color: colors.text
+                          }}
                         >
                           {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
@@ -891,19 +1008,24 @@ export default function CouplePlanner() {
                       {/* Activity Info */}
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-xs px-2 py-0.5 rounded-full text-white ${idea.author === 'AY' ? 'bg-pink-500' : 'bg-purple-500'}`}>
+                          <span 
+                            className="text-xs px-2 py-0.5 rounded-full text-white"
+                            style={{ 
+                              backgroundColor: idea.author === 'AY' ? colors.primary : colors.secondary 
+                            }}
+                          >
                             {idea.author}
                           </span>
                           <span className="text-xs text-secondary uppercase">{CATEGORIES.find(c => c.id === idea.category)?.label}</span>
                         </div>
-                        <h4 className="font-bold text-primary">{idea.title}</h4>
+                        <h4 className="font-bold" style={{ color: colors.text }}>{idea.title}</h4>
                         <p className="text-sm text-secondary">{idea.description}</p>
                       </div>
 
-                      {/* Budget & Delete - FIXED */}
+                      {/* Budget & Delete */}
                       <div className="flex items-center gap-3">
                         {idea.budget && (
-                          <span className="text-pink-500 font-bold">${idea.budget}</span>
+                          <span className="font-bold" style={{ color: colors.primary }}>${idea.budget}</span>
                         )}
                         <motion.button
                           whileHover={{ scale: 1.1 }}
@@ -913,7 +1035,8 @@ export default function CouplePlanner() {
                             e.preventDefault();
                             unscheduleIdea(idea.id);
                           }}
-                          className="p-2 bg-red-100 dark:bg-red-900 text-red-500 rounded-full"
+                          className="p-2 rounded-full"
+                          style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}
                         >
                           <Trash2 className="w-4 h-4" />
                         </motion.button>
@@ -929,8 +1052,8 @@ export default function CouplePlanner() {
                   )}
                 </div>
 
-                {/* Quick Add from Unscheduled */}
-                <div className="mt-6 pt-6 border-t border-border-custom">
+                {/* Quick Add */}
+                <div className="mt-6 pt-6 border-t" style={{ borderColor: colors.border }}>
                   <h4 className="font-bold text-primary mb-3">Quick Add to This Day</h4>
                   <div className="flex flex-wrap gap-2">
                     {ideas.filter(i => !i.isScheduled).slice(0, 5).map(idea => (
@@ -952,7 +1075,11 @@ export default function CouplePlanner() {
                           };
                           saveIdea(updated);
                         }}
-                        className={`px-3 py-2 rounded-xl text-xs font-medium ${idea.author === 'AY' ? 'bg-pink-100 text-pink-700' : 'bg-purple-100 text-purple-700'} border border-border-custom`}
+                        className="px-3 py-2 rounded-xl text-xs font-medium border border-border-custom"
+                        style={{ 
+                          backgroundColor: idea.author === 'AY' ? `${colors.primary}20` : `${colors.secondary}20`,
+                          color: idea.author === 'AY' ? colors.primary : colors.secondary
+                        }}
                       >
                         {idea.title.substring(0, 20)}{idea.title.length > 20 ? '...' : ''}
                       </motion.button>
@@ -980,18 +1107,23 @@ export default function CouplePlanner() {
                 initial={{ scale: 0.8, y: 50 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.8, y: 50 }}
-                className="bg-card-bg rounded-3xl p-6 w-full max-w-md shadow-2xl border-4 border-border-custom max-h-[90vh] overflow-y-auto"
+                className="rounded-3xl p-6 w-full max-w-md shadow-2xl border-4 max-h-[90vh] overflow-y-auto"
+                style={{ 
+                  backgroundColor: colors.card,
+                  borderColor: colors.border
+                }}
               >
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-xl font-bold text-primary flex items-center gap-2">
-                    <Sparkles className="w-6 h-6 text-pink-500" />
+                    <Sparkles className="w-6 h-6" style={{ color: colors.primary }} />
                     New Idea 💡
                   </h3>
                   <motion.button 
                     whileHover={{ scale: 1.1, rotate: 90 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={() => setShowAddModal(false)} 
-                    className="text-secondary hover:text-pink-500 bg-pink-50 dark:bg-purple-900 p-2 rounded-full"
+                    className="p-2 rounded-full"
+                    style={{ backgroundColor: `${colors.primary}20`, color: colors.primary }}
                   >
                     <X className="w-5 h-5" />
                   </motion.button>
@@ -1000,7 +1132,11 @@ export default function CouplePlanner() {
                 <div className="space-y-4">
                   <motion.div 
                     whileHover={{ scale: 1.02 }}
-                    className="border-3 border-dashed border-border-custom rounded-2xl p-6 text-center hover:border-pink-400 transition-all cursor-pointer group bg-pink-50/30 dark:bg-purple-900/20"
+                    className="border-3 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer group"
+                    style={{ 
+                      borderColor: colors.border,
+                      backgroundColor: theme === 'dark' ? `${colors.primary}10` : `${colors.primary}05`
+                    }}
                   >
                     {previewImage ? (
                       <div className="relative">
@@ -1009,7 +1145,8 @@ export default function CouplePlanner() {
                           whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.9 }}
                           onClick={() => setPreviewImage(null)}
-                          className="absolute top-2 right-2 bg-red-400 text-white p-2 rounded-full hover:bg-red-500 shadow-lg"
+                          className="absolute top-2 right-2 text-white p-2 rounded-full hover:bg-red-500 shadow-lg"
+                          style={{ backgroundColor: '#ef4444' }}
                         >
                           <X className="w-4 h-4" />
                         </motion.button>
@@ -1018,11 +1155,12 @@ export default function CouplePlanner() {
                       <label className="cursor-pointer block">
                         <motion.div 
                           whileHover={{ scale: 1.1 }}
-                          className="bg-pink-100 dark:bg-purple-900 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3"
+                          className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3"
+                          style={{ backgroundColor: `${colors.primary}20` }}
                         >
-                          <Upload className="w-8 h-8 text-pink-500" />
+                          <Upload className="w-8 h-8" style={{ color: colors.primary }} />
                         </motion.div>
-                        <span className="text-pink-600 font-medium">Add a cute photo 📸</span>
+                        <span className="font-medium" style={{ color: colors.primary }}>Add a cute photo 📸</span>
                         <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                       </label>
                     )}
@@ -1031,44 +1169,69 @@ export default function CouplePlanner() {
                   <input
                     type="text"
                     placeholder="What should we do together? 💕"
-                    className="w-full p-4 border-2 border-border-custom rounded-2xl focus:outline-none focus:border-pink-400 bg-transparent text-primary placeholder-secondary"
+                    className="w-full p-4 border-2 rounded-2xl focus:outline-none bg-transparent placeholder-opacity-50"
+                    style={{ 
+                      borderColor: colors.border,
+                      color: colors.text,
+                      backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)'
+                    }}
                     value={newIdea.title}
                     onChange={e => setNewIdea({...newIdea, title: e.target.value})}
                   />
                   <textarea
                     placeholder="Tell me more about it... ✨"
-                    className="w-full p-4 border-2 border-border-custom rounded-2xl focus:outline-none focus:border-pink-400 h-24 resize-none bg-transparent text-primary placeholder-secondary"
+                    className="w-full p-4 border-2 rounded-2xl focus:outline-none h-24 resize-none bg-transparent placeholder-opacity-50"
+                    style={{ 
+                      borderColor: colors.border,
+                      color: colors.text,
+                      backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)'
+                    }}
                     value={newIdea.description}
                     onChange={e => setNewIdea({...newIdea, description: e.target.value})}
                   />
                   <div className="grid grid-cols-2 gap-3">
                     <select
-                      className="p-4 border-2 border-border-custom rounded-2xl focus:outline-none focus:border-purple-400 bg-transparent text-primary"
+                      className="p-4 border-2 rounded-2xl focus:outline-none bg-transparent"
+                      style={{ 
+                        borderColor: colors.border,
+                        color: colors.text,
+                        backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)'
+                      }}
                       value={newIdea.duration}
                       onChange={e => setNewIdea({...newIdea, duration: e.target.value})}
                     >
-                      <option value="">⏰ Duration</option>
-                      <option value="1-2 hours">✨ 1-2 hours</option>
-                      <option value="Half day">🌅 Half day</option>
-                      <option value="Full day">☀️ Full day</option>
-                      <option value="Evening">🌙 Evening</option>
+                      <option value="" style={{ backgroundColor: colors.card }}>⏰ Duration</option>
+                      <option value="1-2 hours" style={{ backgroundColor: colors.card }}>✨ 1-2 hours</option>
+                      <option value="Half day" style={{ backgroundColor: colors.card }}>🌅 Half day</option>
+                      <option value="Full day" style={{ backgroundColor: colors.card }}>☀️ Full day</option>
+                      <option value="Evening" style={{ backgroundColor: colors.card }}>🌙 Evening</option>
                     </select>
                     <select
-                      className="p-4 border-2 border-border-custom rounded-2xl focus:outline-none focus:border-purple-400 bg-transparent text-primary"
+                      className="p-4 border-2 rounded-2xl focus:outline-none bg-transparent"
+                      style={{ 
+                        borderColor: colors.border,
+                        color: colors.text,
+                        backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)'
+                      }}
                       value={newIdea.category}
                       onChange={e => setNewIdea({...newIdea, category: e.target.value})}
                     >
                       {CATEGORIES.filter(c => c.id !== 'all').map(c => (
-                        <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>
+                        <option key={c.id} value={c.id} style={{ backgroundColor: colors.card }}>{c.emoji} {c.label}</option>
                       ))}
                     </select>
                   </div>
                   <div className="relative">
-                    <DollarSign className="absolute left-4 top-4 w-5 h-5 text-pink-400" />
+                    <DollarSign className="absolute left-4 top-4 w-5 h-5" style={{ color: colors.primary }} />
                     <input
                       type="number"
                       placeholder="Budget (AED) 💰"
-                      className="w-full p-4 pl-12 border-2 border-border-custom rounded-2xl focus:outline-none focus:border-pink-400 bg-transparent text-primary"
+                      className="w-full p-4 pl-12 border-2 rounded-2xl focus:outline-none bg-transparent"
+                      style={{ 
+                        borderColor: colors.border,
+                        color: colors.text,
+                        backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)'
+                      }}
                       value={newIdea.budget}
                       onChange={e => setNewIdea({...newIdea, budget: e.target.value})}
                     />
@@ -1077,7 +1240,10 @@ export default function CouplePlanner() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={addIdea}
-                    className="w-full p-4 bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400 text-white rounded-2xl font-bold text-lg shadow-lg"
+                    className="w-full p-4 text-white rounded-2xl font-bold text-lg shadow-lg"
+                    style={{ 
+                      background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary}, ${colors.accent})`
+                    }}
                   >
                     Add to Our List 💕
                   </motion.button>
@@ -1101,7 +1267,11 @@ export default function CouplePlanner() {
                 animate={{ scale: 1, rotate: 0 }}
                 exit={{ scale: 0.5, rotate: 10 }}
                 transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                className="bg-card-bg rounded-3xl p-8 w-full max-w-md shadow-2xl border-4 border-border-custom text-center"
+                className="rounded-3xl p-8 w-full max-w-md shadow-2xl border-4 text-center"
+                style={{ 
+                  backgroundColor: colors.card,
+                  borderColor: colors.border
+                }}
               >
                 <motion.div 
                   animate={{ rotate: [0, 10, -10, 0] }}
@@ -1110,22 +1280,31 @@ export default function CouplePlanner() {
                 >
                   🎲
                 </motion.div>
-                <h3 className="text-2xl font-bold text-purple-600 mb-2">The universe says...</h3>
+                <h3 className="text-2xl font-bold mb-2" style={{ color: colors.secondary }}>The universe says...</h3>
                 <motion.div 
                   initial={{ y: 20, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.3 }}
-                  className="p-6 rounded-2xl bg-gradient-to-br from-pink-50 to-purple-50 dark:from-purple-900/30 dark:to-pink-900/30 border-2 border-border-custom mb-6"
+                  className="p-6 rounded-2xl border-2 mb-6"
+                  style={{ 
+                    background: `linear-gradient(to bottom right, ${colors.primary}20, ${colors.secondary}20)`,
+                    borderColor: colors.border
+                  }}
                 >
                   {randomPick.imageUrl && (
                     <img src={randomPick.imageUrl} alt="" className="w-full h-32 object-cover rounded-xl mb-4 shadow-md" />
                   )}
-                  <div className={`inline-block px-3 py-1 rounded-full text-xs text-white mb-2 ${randomPick.author === 'AY' ? 'bg-pink-500' : 'bg-purple-500'}`}>
+                  <div 
+                    className="inline-block px-3 py-1 rounded-full text-xs text-white mb-2"
+                    style={{ 
+                      backgroundColor: randomPick.author === 'AY' ? colors.primary : colors.secondary 
+                    }}
+                  >
                     Added by {randomPick.author}
                   </div>
-                  <h4 className="text-xl font-bold text-primary mb-2">{randomPick.title}</h4>
-                  <p className="text-secondary mb-3">{randomPick.description}</p>
-                  <div className="flex justify-center gap-4 text-sm text-secondary">
+                  <h4 className="text-xl font-bold mb-2" style={{ color: colors.text }}>{randomPick.title}</h4>
+                  <p className="mb-3" style={{ color: colors.textSecondary }}>{randomPick.description}</p>
+                  <div className="flex justify-center gap-4 text-sm" style={{ color: colors.textSecondary }}>
                     <span>⏰ {randomPick.duration}</span>
                     {randomPick.budget && <span>💰 ${randomPick.budget}</span>}
                   </div>
@@ -1134,7 +1313,10 @@ export default function CouplePlanner() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setShowRandomModal(false)}
-                  className="px-8 py-3 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-full font-bold shadow-lg"
+                  className="px-8 py-3 text-white rounded-full font-bold shadow-lg"
+                  style={{ 
+                    background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`
+                  }}
                 >
                   Yay! Let&apos;s do it! 🎉
                 </motion.button>
@@ -1156,16 +1338,25 @@ export default function CouplePlanner() {
                 initial={{ scale: 0.8, y: 50 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.8, y: 50 }}
-                className="bg-card-bg rounded-3xl p-6 w-full max-w-md shadow-2xl border-4 border-border-custom text-center"
+                className="rounded-3xl p-6 w-full max-w-md shadow-2xl border-4 text-center"
+                style={{ 
+                  backgroundColor: colors.card,
+                  borderColor: colors.border
+                }}
               >
                 <div className="text-6xl mb-4">💰</div>
-                <h3 className="text-2xl font-bold text-primary mb-2">Set Budget for {format(currentDate, 'MMMM yyyy')}</h3>
-                <p className="text-secondary mb-4">How much are we planning to spend this month?</p>
+                <h3 className="text-2xl font-bold mb-2" style={{ color: colors.text }}>Set Budget for {format(currentDate, 'MMMM yyyy')}</h3>
+                <p className="mb-4" style={{ color: colors.textSecondary }}>How much are we planning to spend this month?</p>
                 
                 <input
                   type="number"
                   placeholder="Enter amount (AED)"
-                  className="w-full p-4 border-2 border-border-custom rounded-2xl focus:outline-none focus:border-pink-400 text-center text-2xl font-bold bg-transparent text-primary mb-4"
+                  className="w-full p-4 border-2 rounded-2xl focus:outline-none text-center text-2xl font-bold mb-4 bg-transparent"
+                  style={{ 
+                    borderColor: colors.border,
+                    color: colors.text,
+                    backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)'
+                  }}
                   value={tempBudget}
                   onChange={e => setTempBudget(e.target.value)}
                   autoFocus
@@ -1176,7 +1367,11 @@ export default function CouplePlanner() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => setShowBudgetModal(false)}
-                    className="flex-1 p-3 border-2 border-border-custom rounded-2xl text-secondary font-medium"
+                    className="flex-1 p-3 border-2 rounded-2xl font-medium"
+                    style={{ 
+                      borderColor: colors.border,
+                      color: colors.textSecondary
+                    }}
                   >
                     Cancel
                   </motion.button>
@@ -1184,7 +1379,10 @@ export default function CouplePlanner() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={setBudget}
-                    className="flex-1 p-3 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-2xl font-bold"
+                    className="flex-1 p-3 text-white rounded-2xl font-bold"
+                    style={{ 
+                      background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`
+                    }}
                   >
                     Set Budget 💕
                   </motion.button>
@@ -1198,11 +1396,13 @@ export default function CouplePlanner() {
   );
 }
 
-// Simplified Idea Card
-function SimpleIdeaCard({ idea, onDelete, onDragStart }: { 
+// Simplified Idea Card with proper contrast
+function SimpleIdeaCard({ idea, onDelete, onDragStart, colors, theme }: { 
   idea: Idea; 
   onDelete: (id: string) => void;
   onDragStart: () => void;
+  colors: any;
+  theme: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: idea.id,
@@ -1219,6 +1419,12 @@ function SimpleIdeaCard({ idea, onDelete, onDragStart }: {
     }
   }, [isDragging, onDragStart]);
 
+  // Determine text color based on background darkness
+  const isDarkBg = (className: string) => className.includes('900');
+  const ayTextColor = isDarkBg(colors.ideaAY) ? '#fce7f3' : '#831843';
+  const akTextColor = isDarkBg(colors.ideaAK) ? '#ede9fe' : '#5b21b6';
+  const textColor = idea.author === 'AY' ? ayTextColor : akTextColor;
+
   return (
     <motion.div
       layout
@@ -1232,7 +1438,7 @@ function SimpleIdeaCard({ idea, onDelete, onDragStart }: {
         style={style}
         {...attributes}
         {...listeners}
-        className={`p-3 bg-white dark:bg-purple-900/40 border-l-4 ${idea.author === 'AY' ? 'border-pink-400' : 'border-purple-400'} rounded-2xl cursor-grab active:cursor-grabbing shadow-md hover:shadow-xl transition-all`}
+        className={`p-3 rounded-2xl cursor-grab active:cursor-grabbing shadow-md hover:shadow-xl transition-all ${idea.author === 'AY' ? colors.ideaAY : colors.ideaAK}`}
       >
         <div className="flex justify-between items-start">
           <div className="flex-1 pr-8">
@@ -1240,17 +1446,22 @@ function SimpleIdeaCard({ idea, onDelete, onDragStart }: {
               <img src={idea.imageUrl} alt="" className="w-full h-16 object-cover rounded-lg mb-2" />
             )}
             <div className="flex items-center gap-2 mb-1">
-              <span className={`text-[10px] px-2 py-0.5 rounded-full text-white ${idea.author === 'AY' ? 'bg-pink-500' : 'bg-purple-500'}`}>
+              <span 
+                className="text-[10px] px-2 py-0.5 rounded-full text-white"
+                style={{ 
+                  backgroundColor: idea.author === 'AY' ? colors.primary : colors.secondary 
+                }}
+              >
                 {idea.author}
               </span>
             </div>
-            <h3 className="font-bold text-primary text-sm">{idea.title}</h3>
-            <div className="flex items-center justify-between mt-1 text-xs text-secondary">
+            <h3 className="font-bold text-sm" style={{ color: textColor }}>{idea.title}</h3>
+            <div className="flex items-center justify-between mt-1 text-xs" style={{ color: textColor, opacity: 0.8 }}>
               <span className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 {idea.duration || 'TBD'}
               </span>
-              {idea.budget && <span className="text-pink-500 font-bold">${idea.budget}</span>}
+              {idea.budget && <span className="font-bold" style={{ color: colors.primary }}>${idea.budget}</span>}
             </div>
           </div>
         </div>
@@ -1258,7 +1469,11 @@ function SimpleIdeaCard({ idea, onDelete, onDragStart }: {
 
       <button
         onClick={() => onDelete(idea.id)}
-        className="absolute top-2 right-2 p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full bg-white dark:bg-purple-800 shadow-sm z-10"
+        className="absolute top-2 right-2 p-2 rounded-full shadow-sm z-10 transition-colors"
+        style={{ 
+          color: '#ef4444',
+          backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.9)'
+        }}
       >
         <Trash2 className="w-4 h-4" />
       </button>
@@ -1266,14 +1481,16 @@ function SimpleIdeaCard({ idea, onDelete, onDragStart }: {
   );
 }
 
-// Simplified Calendar Day
-function SimpleCalendarDay({ day, index, ideas, isWeekend, hasActivities, onClick }: { 
+// Simplified Calendar Day with proper contrast
+function SimpleCalendarDay({ day, index, ideas, isWeekend, hasActivities, onClick, colors, theme }: { 
   day: Date; 
   index: number; 
   ideas: Idea[];
   isWeekend: boolean;
   hasActivities: boolean;
   onClick: () => void;
+  colors: any;
+  theme: string;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `day-${index}`,
@@ -1288,22 +1505,41 @@ function SimpleCalendarDay({ day, index, ideas, isWeekend, hasActivities, onClic
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       onClick={onClick}
-      className={`min-h-[80px] p-2 rounded-xl border-2 cursor-pointer transition-all ${isWeekend ? 'bg-pink-50/30 dark:bg-purple-900/20' : 'bg-white/40 dark:bg-purple-900/10'} ${isOver ? 'border-pink-400 bg-pink-100 dark:bg-purple-800 scale-105 shadow-lg ring-2 ring-pink-400' : hasActivities ? 'border-pink-300 dark:border-purple-500' : 'border-border-custom hover:border-pink-300'}`}
+      className={`min-h-[80px] p-2 rounded-xl border-2 cursor-pointer transition-all ${isWeekend ? colors.dayHover : ''}`}
+      style={{
+        backgroundColor: isOver ? `${colors.primary}40` : hasActivities ? `${colors.primary}15` : theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)',
+        borderColor: isOver ? colors.primary : hasActivities ? colors.primary : colors.border,
+        boxShadow: isOver ? `0 0 0 2px ${colors.primary}` : 'none'
+      }}
     >
-      <div className={`text-sm font-bold mb-1 ${isWeekend ? 'text-pink-500' : 'text-primary'}`}>{format(day, 'd')}</div>
+      <div 
+        className="text-sm font-bold mb-1" 
+        style={{ color: isWeekend ? colors.primary : colors.text }}
+      >
+        {format(day, 'd')}
+      </div>
       <div className="space-y-1">
-        {ideas.slice(0, 2).map(idea => (
-          <div key={idea.id} className={`text-[10px] p-1 rounded truncate ${idea.author === 'AY' ? 'bg-pink-100 text-pink-700' : 'bg-purple-100 text-purple-700'}`}>
-            {idea.title.substring(0, 15)}{idea.title.length > 15 ? '...' : ''}
-          </div>
-        ))}
+        {ideas.slice(0, 2).map(idea => {
+          const isDarkBg = (className: string) => className.includes('900');
+          const ideaTextColor = isDarkBg(idea.author === 'AY' ? colors.ideaAY : colors.ideaAK) ? '#fff' : '#000';
+          
+          return (
+            <div 
+              key={idea.id} 
+              className={`text-[10px] p-1 rounded truncate ${idea.author === 'AY' ? colors.ideaAY : colors.ideaAK}`}
+              style={{ color: ideaTextColor }}
+            >
+              {idea.title.substring(0, 15)}{idea.title.length > 15 ? '...' : ''}
+            </div>
+          );
+        })}
         {ideas.length > 2 && (
-          <div className="text-[10px] text-center text-pink-500 font-bold">+{ideas.length - 2}</div>
+          <div className="text-[10px] text-center font-bold" style={{ color: colors.primary }}>+{ideas.length - 2}</div>
         )}
         {(ayCount > 0 || akCount > 0) && (
           <div className="flex gap-1 mt-1">
-            {ayCount > 0 && <span className="text-[8px] bg-pink-400 text-white px-1 rounded">{ayCount}</span>}
-            {akCount > 0 && <span className="text-[8px] bg-purple-400 text-white px-1 rounded">{akCount}</span>}
+            {ayCount > 0 && <span className="text-[8px] text-white px-1 rounded" style={{ backgroundColor: colors.primary }}>{ayCount}</span>}
+            {akCount > 0 && <span className="text-[8px] text-white px-1 rounded" style={{ backgroundColor: colors.secondary }}>{akCount}</span>}
           </div>
         )}
       </div>
